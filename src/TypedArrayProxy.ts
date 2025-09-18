@@ -1,3 +1,4 @@
+import { buildLookup, type FieldLookup, type FieldLookupStrategy } from './FieldLookupStrategy'
 import type { TypedArray } from './TypedArray'
 
 /**
@@ -44,26 +45,28 @@ import type { TypedArray } from './TypedArray'
  * @template T The TypeScript interface representing the structure of each row
  */
 export class TypedArrayProxy<T extends Record<string, unknown>> implements Iterable<T> {
-  private readonly fieldMap: Map<keyof T, number>
-  private readonly proxyTarget: Record<string, unknown> = {}
-  private readonly proxy: T
-  private currentIndex = 0
+  readonly #fieldLookup: FieldLookup<T>
+  readonly #proxyTarget: Record<string, unknown> = {}
+  readonly #proxy: T
+  readonly #data: readonly T[keyof T][][]
+  readonly #fields: readonly (keyof T)[]
 
-  private readonly rawResponse: TypedArray<T>
+  #currentIndex = 0
 
-  constructor(rawResponse: TypedArray<T>) {
-    // test for future: Function('"use strict";console.log("hello world")')()
-    this.rawResponse = rawResponse
-    // Create a map for O(1) field lookups
-    this.fieldMap = new Map(rawResponse.fields.map((field, index) => [field, index]))
+  constructor(rawResponse: TypedArray<T>, strategy: FieldLookupStrategy = 'map') {
+    const { fields, data } = rawResponse
+    this.#data = data
+    this.#fields = fields
+    const fieldLookup = buildLookup<T>(strategy, fields)
+    this.#fieldLookup = fieldLookup
 
     // Create a single proxy that we'll reuse for all iterations
-    this.proxy = new Proxy(this.proxyTarget, {
+    this.#proxy = new Proxy(this.#proxyTarget, {
       get: (target, prop: string | symbol) => {
         if (typeof prop === 'string') {
-          const fieldIndex = this.fieldMap.get(prop as keyof T)
+          const fieldIndex = fieldLookup(prop as keyof T)
           if (fieldIndex !== undefined) {
-            const currentRow = this.rawResponse.data[this.currentIndex]
+            const currentRow = data[this.#currentIndex]
             return currentRow?.[fieldIndex] ?? null
           }
         }
@@ -72,50 +75,26 @@ export class TypedArrayProxy<T extends Record<string, unknown>> implements Itera
 
       has: (target, prop: string | symbol) => {
         if (typeof prop === 'string') {
-          return this.fieldMap.has(prop as keyof T)
+          return fieldLookup(prop as keyof T) !== undefined
         }
         return prop in target
       },
 
       ownKeys: () => {
-        return this.rawResponse.fields as ReadonlyArray<string | symbol>
+        return Array.from(fields) as ReadonlyArray<string | symbol>
       },
 
       getOwnPropertyDescriptor: (target, prop: string | symbol) => {
-        if (typeof prop === 'string' && this.fieldMap.has(prop as keyof T)) {
+        if (typeof prop === 'string' && fieldLookup(prop as keyof T) !== undefined) {
           return {
             enumerable: true,
             configurable: true,
-            value: this.proxy[prop as keyof T],
+            value: this.#proxy[prop as keyof T],
           }
         }
         return Object.getOwnPropertyDescriptor(target, prop)
       },
     }) as T
-  }
-
-  /**
-   * Create a materialized copy of the item at the specified index.
-   * This is the core materialization logic used by at(), toArray(), and filter().
-   * Assumes the index is valid - callers must perform boundary checks.
-   *
-   * @param index - The zero-based index of the item to materialize (must be valid)
-   * @returns A materialized copy of the item
-   */
-  private materializeItem(index: number): T {
-    const materialized = {} as T
-    const rowData = this.rawResponse.data[index]
-    if (!rowData) {
-      throw new Error(`No data at index ${index}`)
-    }
-    for (const field of this.rawResponse.fields) {
-      const fieldIndex = this.fieldMap.get(field)
-      if (fieldIndex === undefined) {
-        throw new Error(`Field ${String(field)} not found in field map`)
-      }
-      ;(materialized as Record<string, unknown>)[field as string] = rowData[fieldIndex] ?? null
-    }
-    return materialized
   }
 
   /**
@@ -126,12 +105,12 @@ export class TypedArrayProxy<T extends Record<string, unknown>> implements Itera
    * @returns Iterator that yields proxy objects representing each row
    */
   *[Symbol.iterator](): Iterator<T> {
-    for (let i = 0; i < this.rawResponse.data.length; i++) {
+    const { length } = this.#data
+    for (let i = 0; i < length; i++) {
       // Set the current index
-      this.currentIndex = i
-
+      this.#currentIndex = i
       // Yield the same proxy instance - no new object allocation
-      yield this.proxy
+      yield this.#proxy
     }
   }
 
@@ -141,7 +120,7 @@ export class TypedArrayProxy<T extends Record<string, unknown>> implements Itera
    * @returns The number of data rows in the response
    */
   get length(): number {
-    return this.rawResponse.data.length
+    return this.#data.length
   }
 
   /**
@@ -152,7 +131,7 @@ export class TypedArrayProxy<T extends Record<string, unknown>> implements Itera
    * @returns A materialized copy of the item at the given index, or undefined if out of bounds
    */
   at(index: number): T | undefined {
-    if (index < 0 || index >= this.rawResponse.data.length) {
+    if (index < 0 || index >= this.#data.length) {
       return undefined
     }
     return this.materializeItem(index)
@@ -166,7 +145,7 @@ export class TypedArrayProxy<T extends Record<string, unknown>> implements Itera
    * @returns Array of materialized objects representing all items
    */
   toArray(): T[] {
-    return this.rawResponse.data.map((_, index) => this.materializeItem(index))
+    return this.#data.map((_, index) => this.materializeItem(index))
     // const result: T[] = []
     // for (let i = 0; i < this.rawResponse.data.length; i++) {
     //   result.push(this.materializeItem(i))
@@ -184,9 +163,9 @@ export class TypedArrayProxy<T extends Record<string, unknown>> implements Itera
    */
   filter(predicate: (item: T) => boolean): T[] {
     const result: T[] = []
-    for (let i = 0; i < this.rawResponse.data.length; i++) {
-      this.currentIndex = i
-      if (predicate(this.proxy)) {
+    for (let i = 0; i < this.#data.length; i++) {
+      this.#currentIndex = i
+      if (predicate(this.#proxy)) {
         result.push(this.materializeItem(i))
       }
     }
@@ -207,5 +186,29 @@ export class TypedArrayProxy<T extends Record<string, unknown>> implements Itera
         yield item
       }
     }
+  }
+
+  /**
+   * Create a materialized copy of the item at the specified index.
+   * This is the core materialization logic used by at(), toArray(), and filter().
+   * Assumes the index is valid - callers must perform boundary checks.
+   *
+   * @param index - The zero-based index of the item to materialize (must be valid)
+   * @returns A materialized copy of the item
+   */
+  private materializeItem(index: number): T {
+    const materialized = {} as T
+    const rowData = this.#data[index]
+    if (!rowData) {
+      throw new Error(`No data at index ${index}`)
+    }
+    for (const field of this.#fields) {
+      const fieldIndex = this.#fieldLookup(field)
+      if (fieldIndex === undefined) {
+        throw new Error(`Field ${String(field)} not found in field lookup`)
+      }
+      ;(materialized as Record<string, unknown>)[field as string] = rowData[fieldIndex] ?? null
+    }
+    return materialized
   }
 }

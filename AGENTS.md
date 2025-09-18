@@ -25,7 +25,7 @@ Default to using Bun instead of Node.js.
 
 ## Testing
 
-Use `bun test` to run tests.
+Use `bun test` to run tests. **Coverage is enabled by default** via `bunfig.toml` configuration.
 
 ```ts#index.test.ts
 import { test, expect } from "bun:test";
@@ -34,6 +34,22 @@ test("hello world", () => {
   expect(1).toBe(1);
 });
 ```
+
+### Coverage Configuration
+
+This project has coverage enabled by default with the following settings in `bunfig.toml`:
+
+- **Coverage thresholds**: 95% for lines, functions, and statements
+- **Coverage reports**: Both text (console) and lcov (for CI/editors)
+- **Test files excluded**: `*.test.ts` and `*.spec.ts` files are skipped from coverage calculations
+- **Ignored patterns**: `fixtures/` and `generate-fixture-data.ts` are excluded from coverage
+
+### Testing Guidelines
+
+- All tests automatically include coverage reporting
+- Use `bun test` (not `bun test --coverage`) since coverage is enabled by default
+- Focus on testing public behavior, not internal implementation details
+- Maintain the 95% coverage threshold for all new code
 
 ## Frontend
 
