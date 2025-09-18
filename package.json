@@ -1,0 +1,18 @@
+{
+  "name": "@ratiofu/type-array-proxy",
+  "module": "index.ts",
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "test:coverage": "bun test --coverage",
+    "test:watch": "bun test --watch",
+    "generate-fixtures": "bun run generate-fixture-data.ts"
+  },
+  "devDependencies": {
+    "@ngneat/falso": "8.0.2",
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "5.9.2"
+  }
+}

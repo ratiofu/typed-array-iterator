@@ -1,0 +1,7 @@
+{
+  "fields": ["id","name","emailAddress"],
+  "data": [
+    [1234,"Dawid","dr@example.com"],
+    [1235,"Alex","an@example.com"]
+  ]
+}
