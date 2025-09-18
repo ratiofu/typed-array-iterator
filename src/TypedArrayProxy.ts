@@ -1,7 +1,4 @@
-export type RawResponse<T extends Record<string, unknown>> = {
-  fields: (keyof T)[]
-  data: T[keyof T][][]
-}
+import type { TypedArray } from './TypedArray'
 
 /**
  * A memory-efficient, type-safe proxy for iterating over packed arrays representing objects.
@@ -52,9 +49,9 @@ export class TypedArrayProxy<T extends Record<string, unknown>> implements Itera
   private readonly proxy: T
   private currentIndex = 0
 
-  private readonly rawResponse: RawResponse<T>
+  private readonly rawResponse: TypedArray<T>
 
-  constructor(rawResponse: RawResponse<T>) {
+  constructor(rawResponse: TypedArray<T>) {
     this.rawResponse = rawResponse
     // Create a map for O(1) field lookups
     this.fieldMap = new Map(rawResponse.fields.map((field, index) => [field, index]))

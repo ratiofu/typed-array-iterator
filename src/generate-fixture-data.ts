@@ -4,8 +4,8 @@ import { randEmail, randFirstName, randFullName, randLastName } from '@ngneat/fa
 
 /**
  * Generates test fixture JSON content following the format from fixtures/small.json
- * Usage: bun run generate-fixture-data.ts <count>
- * Example: bun run generate-fixture-data.ts 100
+ * Usage: bun generate-fixtures <count>
+ * Example: bun generate-fixtures 100
  */
 
 function main() {
@@ -13,8 +13,8 @@ function main() {
   const args = process.argv.slice(2)
 
   if (args.length !== 1) {
-    console.error('Usage: bun run generate-fixture-data.ts <count>')
-    console.error('Example: ./generate-fixture-data.ts 100')
+    console.error('Usage: bun generate-fixtures <count>')
+    console.error('Example: bun generate-fixtures 100')
     process.exit(1)
   }
 

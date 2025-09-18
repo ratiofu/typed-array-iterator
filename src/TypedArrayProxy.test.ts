@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
-import { type RawResponse, TypedArrayProxy } from './TypedArrayProxy.ts'
+import type { TypedArray } from './TypedArray'
+import { TypedArrayProxy } from './TypedArrayProxy.ts'
 
 describe('TypedArrayProxy', () => {
   // Type definitions for test data
@@ -7,7 +8,7 @@ describe('TypedArrayProxy', () => {
   type TestProduct = { productId: string; title: string; price: number; inStock: boolean }
 
   describe('with 0 records (empty dataset)', () => {
-    let emptyResponse: RawResponse<TestUser>
+    let emptyResponse: TypedArray<TestUser>
     let iterator: TypedArrayProxy<TestUser>
 
     beforeEach(() => {
@@ -48,7 +49,7 @@ describe('TypedArrayProxy', () => {
   })
 
   describe('with 1 record', () => {
-    let singleResponse: RawResponse<TestUser>
+    let singleResponse: TypedArray<TestUser>
     let iterator: TypedArrayProxy<TestUser>
 
     beforeEach(() => {
@@ -184,7 +185,7 @@ describe('TypedArrayProxy', () => {
   })
 
   describe('with 4 records', () => {
-    let multiResponse: RawResponse<TestProduct>
+    let multiResponse: TypedArray<TestProduct>
     let iterator: TypedArrayProxy<TestProduct>
 
     beforeEach(() => {
@@ -346,7 +347,7 @@ describe('TypedArrayProxy', () => {
     })
 
     test('should handle null values in data', () => {
-      const responseWithNulls: RawResponse<TestProduct> = {
+      const responseWithNulls: TypedArray<TestProduct> = {
         fields: ['productId', 'title', 'price', 'inStock'],
         data: [
           ['P001', null as unknown as string, 999.99, true],
@@ -384,7 +385,7 @@ describe('TypedArrayProxy', () => {
     type TestItem = { id: number; name: string; category: string }
 
     test('toArray() should return materialized objects that remain valid', () => {
-      const response: RawResponse<TestPerson> = {
+      const response: TypedArray<TestPerson> = {
         fields: ['id', 'name', 'active'],
         data: [
           [1, 'Alice', true],
@@ -419,7 +420,7 @@ describe('TypedArrayProxy', () => {
     })
 
     test('filter() should return materialized filtered results', () => {
-      const response: RawResponse<TestPerson> = {
+      const response: TypedArray<TestPerson> = {
         fields: ['id', 'name', 'active'],
         data: [
           [1, 'Alice', true],
@@ -452,7 +453,7 @@ describe('TypedArrayProxy', () => {
     })
 
     test('filteredIterator() should return proxy objects for memory efficiency', () => {
-      const response: RawResponse<TestScore> = {
+      const response: TypedArray<TestScore> = {
         fields: ['id', 'name', 'score'],
         data: [
           [1, 'Alice', 85],
@@ -482,7 +483,7 @@ describe('TypedArrayProxy', () => {
     })
 
     test('Array.from() should work correctly with filter() results', () => {
-      const response: RawResponse<TestItem> = {
+      const response: TypedArray<TestItem> = {
         fields: ['id', 'name', 'category'],
         data: [
           [1, 'Apple', 'fruit'],
@@ -511,7 +512,7 @@ describe('TypedArrayProxy', () => {
     // Note: some type hacking here is necessary!
 
     test('should handle empty fields array', () => {
-      const emptyFieldsResponse: RawResponse<Record<string, never>> = {
+      const emptyFieldsResponse: TypedArray<Record<string, never>> = {
         fields: [],
         data: [[1 as unknown as never, 2 as unknown as never, 3 as unknown as never]],
       }
@@ -527,7 +528,7 @@ describe('TypedArrayProxy', () => {
     })
 
     test('should handle mismatched field count and data columns', () => {
-      const mismatchedResponse: RawResponse<TestName> = {
+      const mismatchedResponse: TypedArray<TestName> = {
         fields: ['id', 'name'],
         data: [[1, 'Alice', 'extra_data']],
       }
@@ -545,7 +546,7 @@ describe('TypedArrayProxy', () => {
     })
 
     test('should handle fewer data columns than fields', () => {
-      const incompleteResponse: RawResponse<TestUser> = {
+      const incompleteResponse: TypedArray<TestUser> = {
         fields: ['id', 'name', 'emailAddress'],
         data: [[1, 'Alice']], // Missing email
       }

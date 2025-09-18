@@ -1,5 +1,6 @@
-import small from './fixtures/small.json'
-import { type RawResponse, TypedArrayProxy } from './TypedArrayProxy'
+import small from '../fixtures/small.json'
+import type { TypedArray } from './TypedArray'
+import { TypedArrayProxy } from './TypedArrayProxy'
 
 // Define the expected shape based on the response structure
 interface User extends Record<string, unknown> {
@@ -9,7 +10,7 @@ interface User extends Record<string, unknown> {
 }
 
 // Create iterator from the actual response
-const users = new TypedArrayProxy<User>(small as RawResponse<User>)
+const users = new TypedArrayProxy<User>(small as TypedArray<User>)
 
 console.log('=== Real data example ===')
 
