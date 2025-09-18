@@ -1,16 +1,15 @@
-
-import {type RawResponse, TypedArrayProxy} from "./TypedArrayProxy";
-import small from "./fixtures/small.json"
+import small from './fixtures/small.json'
+import { type RawResponse, TypedArrayProxy } from './TypedArrayProxy'
 
 // Define the expected shape based on the response structure
-interface User extends Record<string, unknown>{
+interface User extends Record<string, unknown> {
   id: number
   name: string
   emailAddress: string
 }
 
 // Create iterator from the actual response
-const users = new TypedArrayProxy<User>(small as RawResponse<User>);
+const users = new TypedArrayProxy<User>(small as RawResponse<User>)
 
 console.log('=== Real data example ===')
 
@@ -23,8 +22,11 @@ if (users.length < 50) {
 
 // Efficient filtering with materialized results
 console.log('\n=== Efficient filtering ===')
-const usersWithLongNames = users.filter(user => user.name.length > 4)
-console.log('Users with names longer than 4 chars:', usersWithLongNames.map(u => u.name))
+const usersWithLongNames = users.filter((user) => user.name.length > 4)
+console.log(
+  'Users with names longer than 4 chars:',
+  usersWithLongNames.map((u) => u.name)
+)
 
 // Direct access with materialized copies
 console.log('\n=== Direct access ===')

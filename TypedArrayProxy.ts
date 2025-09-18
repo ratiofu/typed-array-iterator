@@ -1,6 +1,6 @@
 export type RawResponse<T extends Record<string, unknown>> = {
   fields: (keyof T)[]
-  data: (T[keyof T])[][]
+  data: T[keyof T][][]
 }
 
 /**
@@ -50,13 +50,14 @@ export class TypedArrayProxy<T extends Record<string, unknown>> implements Itera
   private readonly fieldMap: Map<keyof T, number>
   private readonly proxyTarget: Record<string, unknown> = {}
   private readonly proxy: T
-  private currentIndex: number = 0
+  private currentIndex = 0
 
-  constructor(private readonly rawResponse: RawResponse<T>) {
+  private readonly rawResponse: RawResponse<T>
+
+  constructor(rawResponse: RawResponse<T>) {
+    this.rawResponse = rawResponse
     // Create a map for O(1) field lookups
-    this.fieldMap = new Map(
-      rawResponse.fields.map((field, index) => [field, index])
-    )
+    this.fieldMap = new Map(rawResponse.fields.map((field, index) => [field, index]))
 
     // Create a single proxy that we'll reuse for all iterations
     this.proxy = new Proxy(this.proxyTarget, {
@@ -87,11 +88,11 @@ export class TypedArrayProxy<T extends Record<string, unknown>> implements Itera
           return {
             enumerable: true,
             configurable: true,
-            value: this.proxy[prop as keyof T]
+            value: this.proxy[prop as keyof T],
           }
         }
         return Object.getOwnPropertyDescriptor(target, prop)
-      }
+      },
     }) as T
   }
 
@@ -105,10 +106,16 @@ export class TypedArrayProxy<T extends Record<string, unknown>> implements Itera
    */
   private materializeItem(index: number): T {
     const materialized = {} as T
-    const rowData = this.rawResponse.data[index]!
+    const rowData = this.rawResponse.data[index]
+    if (!rowData) {
+      throw new Error(`No data at index ${index}`)
+    }
     for (const field of this.rawResponse.fields) {
-      const fieldIndex = this.fieldMap.get(field)!
-      ;(materialized as any)[field] = rowData[fieldIndex] ?? null
+      const fieldIndex = this.fieldMap.get(field)
+      if (fieldIndex === undefined) {
+        throw new Error(`Field ${String(field)} not found in field map`)
+      }
+      ;(materialized as Record<string, unknown>)[field as string] = rowData[fieldIndex] ?? null
     }
     return materialized
   }
@@ -147,7 +154,9 @@ export class TypedArrayProxy<T extends Record<string, unknown>> implements Itera
    * @returns A materialized copy of the item at the given index, or undefined if out of bounds
    */
   at(index: number): T | undefined {
-    if (index < 0 || index >= this.rawResponse.data.length) return undefined
+    if (index < 0 || index >= this.rawResponse.data.length) {
+      return undefined
+    }
     return this.materializeItem(index)
   }
 
