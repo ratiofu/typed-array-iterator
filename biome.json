@@ -134,7 +134,7 @@
         "noUselessTypeConstraint": "error",
         "noVoid": "error",
         "useFlatMap": "error",
-        "useLiteralKeys": "warn",
+        "useLiteralKeys": "error",
         "useOptionalChain": "error",
         "useRegexLiterals": "error",
         "useSimpleNumberKeys": "error",
