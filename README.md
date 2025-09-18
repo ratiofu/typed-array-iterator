@@ -62,7 +62,7 @@ bun i
 ## Run Demonstration
 
 ```bash
-bun index.ts
+bun src/index.ts
 ```
 
 **with other fixture data**
@@ -70,35 +70,29 @@ bun index.ts
 TODO:
 
 ```bash
-bun index.ts [path to some_fixture_data.json]
+bun src/index.ts [path to some_fixture_data.json]
 ```
 
 ## Testing
 
 This project includes comprehensive unit tests with > 95% code coverage.
 
-### Run Tests
+### Run Tests with Coverage
 
 ```bash
 bun test
 ```
 
-### Tests Coverage
+## Code Quality
 
 ```bash
-bun run test:coverage
-```
-
-### Watch Mode
-
-```bash
-bun run test:watch
+bun quality
 ```
 
 ## Generate More Test Fixture Data
 
 ```bash
-bun run generate-fixtures 1000000 > huge.json
+bun generate-fixtures 1000000 > huge.json
 ```
 
 ## License

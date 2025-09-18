@@ -52,6 +52,7 @@ export class TypedArrayProxy<T extends Record<string, unknown>> implements Itera
   private readonly rawResponse: TypedArray<T>
 
   constructor(rawResponse: TypedArray<T>) {
+    // test for future: Function('"use strict";console.log("hello world")')()
     this.rawResponse = rawResponse
     // Create a map for O(1) field lookups
     this.fieldMap = new Map(rawResponse.fields.map((field, index) => [field, index]))

@@ -4,11 +4,9 @@
   "type": "module",
   "scripts": {
     "test": "bun test",
-    "test:coverage": "bun test --coverage",
-    "test:watch": "bun test --watch",
     "generate-fixtures": "bun run src/generate-fixture-data.ts",
     "check": "biome check --write .",
-    "quality": "bun check && bun run test:coverage",
+    "quality": "bun check && bun run test",
     "quality:all": "time (bun quality && bun generate-fixtures 1 && bun src/index.ts)"
   },
   "devDependencies": {
