@@ -89,6 +89,26 @@ bun test
 bun quality
 ```
 
+## Performance Benchmarks
+
+Run comprehensive performance benchmarks comparing different iteration and filtering methods:
+
+```bash
+# Run benchmarks with default dataset (20,000 records)
+bun run benchmark
+
+# Run benchmarks with custom record count
+bun --expose-gc src/benchmark/index.ts 5000
+bun --expose-gc src/benchmark/index.ts 50000
+```
+
+The benchmark compares:
+- **Direct proxy iteration** vs **toArray() then iterate**
+- **filteredIterator()** vs **filter()** methods
+- Memory usage and execution time across different dataset sizes
+
+Data is generated in-memory using realistic fake data. Results include detailed timing statistics, memory usage patterns, and visual performance distribution charts.
+
 ## Generate More Test Fixture Data
 
 ```bash

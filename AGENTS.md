@@ -42,7 +42,7 @@ This project has coverage enabled by default with the following settings in `bun
 - **Coverage thresholds**: 95% for lines, functions, and statements
 - **Coverage reports**: Both text (console) and lcov (for CI/editors)
 - **Test files excluded**: `*.test.ts` and `*.spec.ts` files are skipped from coverage calculations
-- **Ignored patterns**: `fixtures/` and `generate-fixture-data.ts` are excluded from coverage
+- **Ignored patterns**: `fixtures/` and `generateFixtureData.ts` are excluded from coverage
 
 ### Testing Guidelines
 

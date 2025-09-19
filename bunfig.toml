@@ -19,5 +19,5 @@ coveragePathIgnorePatterns = [
   "**/*.test.ts",
   "**/*.spec.ts",
   "**/fixtures/**",
-  "**/generate-fixture-data.ts"
+  "**/generateFixtureData.ts"
 ]

@@ -1,16 +1,10 @@
-import small from '../fixtures/small.json'
+import type { FixtureModel } from './benchmark/FixtureModel'
+import small from './fixtures/response.json'
 import type { TypedArray } from './TypedArray'
 import { TypedArrayProxy } from './TypedArrayProxy'
 
-// Define the expected shape based on the response structure
-interface User extends Record<string, unknown> {
-  id: number
-  name: string
-  emailAddress: string
-}
-
 // Create iterator from the actual response
-const users = new TypedArrayProxy<User>(small as TypedArray<User>)
+const users = new TypedArrayProxy<FixtureModel>(small as TypedArray<FixtureModel>)
 
 console.log('=== Real data example ===')
 
