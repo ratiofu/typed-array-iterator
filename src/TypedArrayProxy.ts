@@ -181,9 +181,10 @@ export class TypedArrayProxy<T extends Record<string, unknown>> implements Itera
    * @returns Generator that yields proxy objects for items that pass the predicate test
    */
   *filteredIterator(predicate: (item: T) => boolean): Generator<T, void, unknown> {
-    for (const item of this) {
-      if (predicate(item)) {
-        yield item
+    for (let i = 0; i < this.#data.length; i++) {
+      this.#currentIndex = i
+      if (predicate(this.#proxy)) {
+        yield this.#proxy
       }
     }
   }
