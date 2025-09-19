@@ -507,6 +507,146 @@ describe('TypedArrayProxy', () => {
     })
   })
 
+  describe('FieldLookupStrategy integration', () => {
+    type TestUser = { id: number; name: string; emailAddress: string }
+
+    test('should work with map strategy (default)', () => {
+      const response: TypedArray<TestUser> = {
+        fields: ['id', 'name', 'emailAddress'],
+        data: [[1, 'Alice', 'alice@example.com']],
+      }
+
+      const iterator = new TypedArrayProxy<TestUser>(response, 'map')
+      const user = iterator.at(0)
+
+      expect(user).toBeDefined()
+      expect(user?.id).toBe(1)
+      expect(user?.name).toBe('Alice')
+      expect(user?.emailAddress).toBe('alice@example.com')
+    })
+
+    test('should work with switch strategy', () => {
+      const response: TypedArray<TestUser> = {
+        fields: ['id', 'name', 'emailAddress'],
+        data: [[1, 'Alice', 'alice@example.com']],
+      }
+
+      const iterator = new TypedArrayProxy<TestUser>(response, 'switch')
+      const user = iterator.at(0)
+
+      expect(user).toBeDefined()
+      expect(user?.id).toBe(1)
+      expect(user?.name).toBe('Alice')
+      expect(user?.emailAddress).toBe('alice@example.com')
+    })
+
+    test('both strategies should produce identical results', () => {
+      const response: TypedArray<TestUser> = {
+        fields: ['id', 'name', 'emailAddress'],
+        data: [
+          [1, 'Alice', 'alice@example.com'],
+          [2, 'Bob', 'bob@example.com'],
+          [3, 'Charlie', 'charlie@example.com'],
+        ],
+      }
+
+      const mapIterator = new TypedArrayProxy<TestUser>(response, 'map')
+      const switchIterator = new TypedArrayProxy<TestUser>(response, 'switch')
+
+      // Test at() method
+      for (let i = 0; i < response.data.length; i++) {
+        const mapUser = mapIterator.at(i)
+        const switchUser = switchIterator.at(i)
+
+        expect(mapUser).toEqual(switchUser)
+      }
+
+      // Test iteration
+      const mapResults: TestUser[] = []
+      const switchResults: TestUser[] = []
+
+      for (const user of mapIterator) {
+        mapResults.push({ ...user })
+      }
+
+      for (const user of switchIterator) {
+        switchResults.push({ ...user })
+      }
+
+      expect(mapResults).toEqual(switchResults)
+    })
+
+    test('switch strategy should handle property access during iteration', () => {
+      const response: TypedArray<TestUser> = {
+        fields: ['id', 'name', 'emailAddress'],
+        data: [
+          [1, 'Alice', 'alice@example.com'],
+          [2, 'Bob', 'bob@example.com'],
+        ],
+      }
+
+      const iterator = new TypedArrayProxy<TestUser>(response, 'switch')
+      const results: string[] = []
+
+      for (const user of iterator) {
+        // Test property access with switch strategy
+        results.push(`${user.id}:${user.name}:${user.emailAddress}`)
+      }
+
+      expect(results).toEqual(['1:Alice:alice@example.com', '2:Bob:bob@example.com'])
+    })
+
+    test('switch strategy should handle non-existent field access', () => {
+      const response: TypedArray<TestUser> = {
+        fields: ['id', 'name', 'emailAddress'],
+        data: [[1, 'Alice', 'alice@example.com']],
+      }
+
+      const iterator = new TypedArrayProxy<TestUser>(response, 'switch')
+      const user = iterator.at(0)
+
+      expect(user).toBeDefined()
+      if (user) {
+        // Test accessing non-existent field
+        expect((user as Record<string, unknown>).nonExistentField).toBe(undefined)
+      }
+    })
+
+    test('switch strategy should handle Object.keys() correctly', () => {
+      const response: TypedArray<TestUser> = {
+        fields: ['id', 'name', 'emailAddress'],
+        data: [[1, 'Alice', 'alice@example.com']],
+      }
+
+      const iterator = new TypedArrayProxy<TestUser>(response, 'switch')
+      const user = iterator.at(0)
+
+      expect(user).toBeDefined()
+      if (user) {
+        const keys = Object.keys(user)
+        expect(keys).toEqual(['id', 'name', 'emailAddress'])
+      }
+    })
+
+    test('switch strategy should handle property existence checks', () => {
+      const response: TypedArray<TestUser> = {
+        fields: ['id', 'name', 'emailAddress'],
+        data: [[1, 'Alice', 'alice@example.com']],
+      }
+
+      const iterator = new TypedArrayProxy<TestUser>(response, 'switch')
+
+      // Test during iteration (proxy object)
+      for (const user of iterator) {
+        expect('id' in user).toBe(true)
+        expect('name' in user).toBe(true)
+        expect('emailAddress' in user).toBe(true)
+        expect('nonExistentField' in user).toBe(false)
+        break
+      }
+    })
+  })
+
   describe('edge cases and error handling', () => {
     type TestName = { id: number; name: string }
     // Note: some type hacking here is necessary!

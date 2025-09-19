@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { bench, group, run as mitataRun } from 'mitata'
+import { bench, run as mitataRun } from 'mitata'
 import { generateFixtureData } from '../generateFixtureData'
 import type { TypedArray } from '../TypedArray'
 import { TypedArrayProxy } from '../TypedArrayProxy'
@@ -16,39 +16,36 @@ const consumeUser = (user: FixtureModel) => {
 }
 
 function setupBenchmarks(data: TypedArray<FixtureModel>) {
-  const proxy = new TypedArrayProxy<FixtureModel>(data)
-  group('Filtering Comparison', () => {
-    bench('filteredIterator() - memory efficient', () => {
-      consumedCount = 0
-      for (const user of proxy.filteredIterator(longNameFilter)) {
-        consumeUser(user)
-      }
-    })
+  const proxy = new TypedArrayProxy<FixtureModel>(data, 'map')
 
-    bench('filter() - materialized results', () => {
-      consumedCount = 0
-      const filtered = proxy.filter(longNameFilter)
-      for (const user of filtered) {
-        consumeUser(user)
-      }
-    })
+  bench('filteredIterator() - memory efficient', () => {
+    consumedCount = 0
+    for (const user of proxy.filteredIterator(longNameFilter)) {
+      consumeUser(user)
+    }
   })
 
-  group('Iteration Comparison', () => {
-    bench('Direct proxy iteration', () => {
-      consumedCount = 0
-      for (const user of proxy) {
-        consumeUser(user)
-      }
-    })
+  bench('filter() - materialized results', () => {
+    consumedCount = 0
+    const filtered = proxy.filter(longNameFilter)
+    for (const user of filtered) {
+      consumeUser(user)
+    }
+  })
 
-    bench('toArray() then iterate', () => {
-      consumedCount = 0
-      const array = proxy.toArray()
-      for (const user of array) {
-        consumeUser(user)
-      }
-    })
+  bench('Direct proxy iteration', () => {
+    consumedCount = 0
+    for (const user of proxy) {
+      consumeUser(user)
+    }
+  })
+
+  bench('toArray() then iterate', () => {
+    consumedCount = 0
+    const array = proxy.toArray()
+    for (const user of array) {
+      consumeUser(user)
+    }
   })
 }
 
@@ -68,7 +65,8 @@ async function runBenchmarks(recordCount = 20000) {
   console.log('🏃  Running benchmarks...\n')
 
   // Run all benchmarks
-  await mitataRun({ colors: true })
+  const results = await mitataRun({ colors: true })
+  console.log('result', results)
 
   console.log(`\n∑ Total operations: ${consumedCount.toLocaleString()}`)
 }

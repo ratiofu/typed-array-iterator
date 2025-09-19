@@ -48,6 +48,7 @@
         "useValidForDirection": "error",
         "useYield": "error",
         "noInvalidBuiltinInstantiation": "error",
+        "noUnusedImports": "error",
         "useValidTypeof": "error"
       },
       "suspicious": {
