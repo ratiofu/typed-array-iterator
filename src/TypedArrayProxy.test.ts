@@ -608,7 +608,8 @@ describe('TypedArrayProxy', () => {
       expect(user).toBeDefined()
       if (user) {
         // Test accessing non-existent field
-        expect((user as Record<string, unknown>).nonExistentField).toBe(undefined)
+        // biome-ignore lint/complexity/useLiteralKeys: TypeScript's index signature check
+        expect((user as Record<string, unknown>)['nonExistentField']).toBe(undefined)
       }
     })
 
@@ -637,6 +638,7 @@ describe('TypedArrayProxy', () => {
       const iterator = new TypedArrayProxy<TestUser>(response, 'switch')
 
       // Test during iteration (proxy object)
+      // noinspection LoopStatementThatDoesntLoopJS
       for (const user of iterator) {
         expect('id' in user).toBe(true)
         expect('name' in user).toBe(true)
