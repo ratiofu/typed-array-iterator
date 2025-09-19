@@ -4,7 +4,7 @@ import type { TypedArray } from './TypedArray'
 import { TypedArrayProxy } from './TypedArrayProxy'
 
 // Create iterator from the actual response
-const users = new TypedArrayProxy<FixtureModel>(small as TypedArray<FixtureModel>)
+const users = new TypedArrayProxy(small as TypedArray<FixtureModel>)
 
 console.log('=== Real data example ===')
 

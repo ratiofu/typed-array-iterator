@@ -5,6 +5,7 @@ import { generateFixtureData } from '../generateFixtureData'
 import type { TypedArray } from '../TypedArray'
 import { TypedArrayProxy } from '../TypedArrayProxy'
 import type { FixtureModel } from './FixtureModel'
+import { formatNumber } from './format'
 
 // Test predicate: users with names longer than 10 characters
 const longNameFilter = (user: FixtureModel) => user.name.length > 10
@@ -16,58 +17,89 @@ const consumeUser = (user: FixtureModel) => {
 }
 
 function setupBenchmarks(data: TypedArray<FixtureModel>) {
-  const proxy = new TypedArrayProxy<FixtureModel>(data, 'map')
+  const typedArrayJson = JSON.stringify(data)
+  const traditionalArrayOfObjects = new TypedArrayProxy(data, 'switch').toArray()
+  const traditionalJson = JSON.stringify(traditionalArrayOfObjects)
+  const strategies = ['map', 'switch'] as const
 
-  bench('filteredIterator() - memory efficient', () => {
-    consumedCount = 0
-    for (const user of proxy.filteredIterator(longNameFilter)) {
-      consumeUser(user)
-    }
-  })
+  global.gc?.() // force garbage collection after data setup
 
-  bench('filter() - materialized results', () => {
+  bench('traditionally deserialized array iteration', () => {
+    const array: FixtureModel[] = JSON.parse(traditionalJson)
     consumedCount = 0
-    const filtered = proxy.filter(longNameFilter)
-    for (const user of filtered) {
-      consumeUser(user)
-    }
-  })
-
-  bench('Direct proxy iteration', () => {
-    consumedCount = 0
-    for (const user of proxy) {
-      consumeUser(user)
-    }
-  })
-
-  bench('toArray() then iterate', () => {
-    consumedCount = 0
-    const array = proxy.toArray()
+    // conversion to materialized object array to estimate the extra
+    // "deserialization cost" of allocating all the objects
     for (const user of array) {
       consumeUser(user)
     }
   })
+
+  bench('filter traditionally deserialized array', () => {
+    const array: FixtureModel[] = JSON.parse(traditionalJson)
+    consumedCount = 0
+    for (const user of array.filter(longNameFilter)) {
+      consumeUser(user)
+    }
+  })
+
+  for (const strategy of strategies) {
+    bench(`[${strategy}] proxy iteration`, () => {
+      const deserialized: TypedArray<FixtureModel> = JSON.parse(typedArrayJson)
+      const proxy = new TypedArrayProxy(deserialized, strategy)
+      consumedCount = 0
+      for (const user of proxy) {
+        consumeUser(user)
+      }
+    })
+  }
+
+  for (const strategy of strategies) {
+    bench(`[${strategy}] filtered iteration`, () => {
+      const deserialized: TypedArray<FixtureModel> = JSON.parse(typedArrayJson)
+      const proxy = new TypedArrayProxy(deserialized, strategy)
+      consumedCount = 0
+      for (const user of proxy.filteredIterator(longNameFilter)) {
+        consumeUser(user)
+      }
+    })
+  }
+
+  for (const strategy of strategies) {
+    bench(`[${strategy}] filter to materialized array`, () => {
+      const deserialized: TypedArray<FixtureModel> = JSON.parse(typedArrayJson)
+      const proxy = new TypedArrayProxy(deserialized, strategy)
+      consumedCount = 0
+      const filtered = proxy.filter(longNameFilter)
+      for (const user of filtered) {
+        consumeUser(user)
+      }
+    })
+  }
 }
 
-async function runBenchmarks(recordCount = 20000) {
+function printDataStats(data: TypedArray<FixtureModel>) {
+  console.log(`        Fields: ${data.fields.join(', ')}`)
+  const serialized = JSON.stringify(data)
+  console.log(`   Packed Size: ${formatNumber(serialized.length)} UTF-8 characters`)
+  const gzipped = globalThis.Bun.gzipSync(serialized, { level: 9, windowBits: 31 })
+  console.log(`Packed Gzipped: ${formatNumber(gzipped.length)}B`)
+  const traditionalArrayOfObjects = new TypedArrayProxy(data, 'switch').toArray()
+  const json = JSON.stringify(traditionalArrayOfObjects)
+  console.log(`     JSON Size: ${formatNumber(json.length)} UTF-8 characters`)
+  const gzippedJson = globalThis.Bun.gzipSync(serialized, { level: 9, windowBits: 31 })
+  console.log(`  JSON Gzipped: ${formatNumber(gzippedJson.length)}B`)
+}
+
+export async function runBenchmarks(recordCount = 20000) {
   console.log('\n🚀  TypedArrayProxy Performance Benchmarks')
-
   console.log(`\n⏳  Generating ${recordCount.toLocaleString()} records`)
-  // Generate data in memory
   const data = generateFixtureData(recordCount)
-  console.log(`📊  Fields: ${data.fields.join(', ')}`)
-
-  // Force garbage collection after data generation
-  global.gc?.()
+  printDataStats(data)
+  global.gc?.() // force garbage collection after data generation
 
   setupBenchmarks(data as TypedArray<FixtureModel>)
-
   console.log('🏃  Running benchmarks...\n')
-
-  // Run all benchmarks
-  const results = await mitataRun({ colors: true })
-  console.log('result', results)
-
+  await mitataRun({ colors: true })
   console.log(`\n∑ Total operations: ${consumedCount.toLocaleString()}`)
 }
 
@@ -86,5 +118,3 @@ if (import.meta.main) {
 
   runBenchmarks(recordCount).catch(console.error)
 }
-
-export { runBenchmarks }

@@ -16,7 +16,7 @@ describe('TypedArrayProxy', () => {
         fields: ['id', 'name', 'emailAddress'],
         data: [],
       }
-      iterator = new TypedArrayProxy<TestUser>(emptyResponse)
+      iterator = new TypedArrayProxy(emptyResponse)
     })
 
     test('should have length of 0', () => {
@@ -57,7 +57,7 @@ describe('TypedArrayProxy', () => {
         fields: ['id', 'name', 'emailAddress'],
         data: [[1001, 'Alice', 'alice@example.com']],
       }
-      iterator = new TypedArrayProxy<TestUser>(singleResponse)
+      iterator = new TypedArrayProxy(singleResponse)
     })
 
     test('should have length of 1', () => {
@@ -198,7 +198,7 @@ describe('TypedArrayProxy', () => {
           ['P004', 'Monitor', 299.99, true],
         ],
       }
-      iterator = new TypedArrayProxy<TestProduct>(multiResponse)
+      iterator = new TypedArrayProxy(multiResponse)
     })
 
     test('should have length of 4', () => {
@@ -268,8 +268,8 @@ describe('TypedArrayProxy', () => {
     })
 
     test('should maintain proxy state correctly during iteration', () => {
-      const iterator1 = new TypedArrayProxy<TestProduct>(multiResponse)
-      const iterator2 = new TypedArrayProxy<TestProduct>(multiResponse)
+      const iterator1 = new TypedArrayProxy(multiResponse)
+      const iterator2 = new TypedArrayProxy(multiResponse)
 
       // Get items from different iterators
       const item1 = iterator1.at(0)
@@ -355,7 +355,7 @@ describe('TypedArrayProxy', () => {
         ],
       }
 
-      const nullIterator = new TypedArrayProxy<TestProduct>(responseWithNulls)
+      const nullIterator = new TypedArrayProxy(responseWithNulls)
 
       // Test first item
       const firstItem = nullIterator.at(0)
@@ -394,7 +394,7 @@ describe('TypedArrayProxy', () => {
         ],
       }
 
-      const iterator = new TypedArrayProxy<TestPerson>(response)
+      const iterator = new TypedArrayProxy(response)
       const materialized = iterator.toArray()
 
       expect(materialized).toHaveLength(3)
@@ -430,7 +430,7 @@ describe('TypedArrayProxy', () => {
         ],
       }
 
-      const iterator = new TypedArrayProxy<TestPerson>(response)
+      const iterator = new TypedArrayProxy(response)
       const activeUsers = iterator.filter((user) => user.active)
 
       expect(activeUsers).toHaveLength(2)
@@ -463,7 +463,7 @@ describe('TypedArrayProxy', () => {
         ],
       }
 
-      const iterator = new TypedArrayProxy<TestScore>(response)
+      const iterator = new TypedArrayProxy(response)
 
       const highScorers: TestScore[] = []
       for (const user of iterator.filteredIterator((user) => user.score >= 90)) {
@@ -493,7 +493,7 @@ describe('TypedArrayProxy', () => {
         ],
       }
 
-      const iterator = new TypedArrayProxy<TestItem>(response)
+      const iterator = new TypedArrayProxy(response)
 
       // This should work correctly now since filter() returns materialized objects
       const fruits = Array.from(iterator.filter((item) => item.category === 'fruit'))
@@ -516,7 +516,7 @@ describe('TypedArrayProxy', () => {
         data: [[1, 'Alice', 'alice@example.com']],
       }
 
-      const iterator = new TypedArrayProxy<TestUser>(response, 'map')
+      const iterator = new TypedArrayProxy(response, 'map')
       const user = iterator.at(0)
 
       expect(user).toBeDefined()
@@ -531,7 +531,7 @@ describe('TypedArrayProxy', () => {
         data: [[1, 'Alice', 'alice@example.com']],
       }
 
-      const iterator = new TypedArrayProxy<TestUser>(response, 'switch')
+      const iterator = new TypedArrayProxy(response, 'switch')
       const user = iterator.at(0)
 
       expect(user).toBeDefined()
@@ -550,8 +550,8 @@ describe('TypedArrayProxy', () => {
         ],
       }
 
-      const mapIterator = new TypedArrayProxy<TestUser>(response, 'map')
-      const switchIterator = new TypedArrayProxy<TestUser>(response, 'switch')
+      const mapIterator = new TypedArrayProxy(response, 'map')
+      const switchIterator = new TypedArrayProxy(response, 'switch')
 
       // Test at() method
       for (let i = 0; i < response.data.length; i++) {
@@ -585,7 +585,7 @@ describe('TypedArrayProxy', () => {
         ],
       }
 
-      const iterator = new TypedArrayProxy<TestUser>(response, 'switch')
+      const iterator = new TypedArrayProxy(response, 'switch')
       const results: string[] = []
 
       for (const user of iterator) {
@@ -602,7 +602,7 @@ describe('TypedArrayProxy', () => {
         data: [[1, 'Alice', 'alice@example.com']],
       }
 
-      const iterator = new TypedArrayProxy<TestUser>(response, 'switch')
+      const iterator = new TypedArrayProxy(response, 'switch')
       const user = iterator.at(0)
 
       expect(user).toBeDefined()
@@ -619,7 +619,7 @@ describe('TypedArrayProxy', () => {
         data: [[1, 'Alice', 'alice@example.com']],
       }
 
-      const iterator = new TypedArrayProxy<TestUser>(response, 'switch')
+      const iterator = new TypedArrayProxy(response, 'switch')
       const user = iterator.at(0)
 
       expect(user).toBeDefined()
@@ -635,7 +635,7 @@ describe('TypedArrayProxy', () => {
         data: [[1, 'Alice', 'alice@example.com']],
       }
 
-      const iterator = new TypedArrayProxy<TestUser>(response, 'switch')
+      const iterator = new TypedArrayProxy(response, 'switch')
 
       // Test during iteration (proxy object)
       // noinspection LoopStatementThatDoesntLoopJS
@@ -675,7 +675,7 @@ describe('TypedArrayProxy', () => {
         data: [[1, 'Alice', 'extra_data']],
       }
 
-      const iterator = new TypedArrayProxy<TestName>(mismatchedResponse)
+      const iterator = new TypedArrayProxy(mismatchedResponse)
       const item = iterator.at(0)
       expect(item).toBeDefined()
       if (item) {
@@ -693,7 +693,7 @@ describe('TypedArrayProxy', () => {
         data: [[1, 'Alice']], // Missing email
       }
 
-      const iterator = new TypedArrayProxy<TestUser>(incompleteResponse)
+      const iterator = new TypedArrayProxy(incompleteResponse)
       const item = iterator.at(0)
       expect(item).toBeDefined()
       if (item) {
