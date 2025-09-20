@@ -1,7 +1,12 @@
-{
-  "fields": ["id","name","emailAddress"],
-  "data": [
-    [1234,"Dawid","dr@example.com"],
-    [1235,"Alex","an@example.com"]
-  ]
-}
+[
+  {
+    "id": 1234,
+    "name": "Dawid",
+    "emailAddress": "dr@example.com"
+  },
+  {
+    "id": 1235,
+    "name": "Alex",
+    "emailAddress": "an@example.com"
+  }
+]

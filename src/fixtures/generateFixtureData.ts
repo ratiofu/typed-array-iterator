@@ -1,8 +1,7 @@
 #!/usr/bin/env bun
 
 import { randEmail, randFirstName, randFullName, randLastName } from '@ngneat/falso'
-import type { FixtureModel } from './benchmark/FixtureModel'
-import type { TypedArray } from './TypedArray'
+import type { FixtureModel } from './FixtureModel'
 
 /**
  * Generates test fixture data following the format from fixtures/response.json
@@ -21,27 +20,24 @@ function generateDiverseName(): string {
  * @param count Number of records to generate
  * @returns Fixture object with fields and data arrays
  */
-export function generateFixtureData(count: number): TypedArray<FixtureModel> {
+export function generateFixtureData(count: number): readonly FixtureModel[] {
   if (Number.isNaN(count) || count <= 0) {
     throw new Error('Count must be a positive integer')
   }
 
   // Generate the data array efficiently
-  const data: (keyof FixtureModel)[][] = []
+  const data: FixtureModel[] = []
 
   for (let i = 0; i < count; i++) {
-    data.push([
-      1000 + i, // Simple incremental ID starting from 1000
-      generateDiverseName(),
-      randEmail(),
-    ])
+    data.push({
+      id: 1000 + i, // Simple incremental ID starting from 1000
+      name: generateDiverseName(),
+      emailAddress: Math.random() < 0.9 ? randEmail() : null,
+    })
   }
 
   // Create the fixture object following the exact format from response.json
-  return {
-    fields: ['id', 'name', 'emailAddress'] as const,
-    data: data,
-  }
+  return data
 }
 
 /**

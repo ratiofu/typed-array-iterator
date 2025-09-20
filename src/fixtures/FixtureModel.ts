@@ -4,5 +4,5 @@
 export interface FixtureModel extends Record<string, unknown> {
   id: number
   name: string
-  emailAddress: string
+  emailAddress: string | null
 }

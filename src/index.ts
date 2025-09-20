@@ -1,32 +1,29 @@
-import type { FixtureModel } from './benchmark/FixtureModel'
-import small from './fixtures/response.json'
-import type { TypedArray } from './TypedArray'
-import { TypedArrayProxy } from './TypedArrayProxy'
+import { stream } from './Stream'
 
-// Create iterator from the actual response
-const users = new TypedArrayProxy(small as TypedArray<FixtureModel>)
-
-console.log('=== Real data example ===')
-
-// Use in for...of loop - this is the main requirement
-if (users.length < 50) {
-  for (const user of users) {
-    console.log(`Processing user: ${user.name} (ID: ${user.id}, Email: ${user.emailAddress})`)
-  }
+interface UserData extends Record<string, unknown> {
+  id: number
+  name: string
+  emailAddress: string | null
 }
 
-// Efficient filtering with materialized results
-console.log('\n=== Efficient filtering ===')
-const usersWithLongNames = users.filter((user) => user.name.length > 4)
-console.log(
-  'Users with names longer than 4 chars:',
-  usersWithLongNames.map((u) => u.name)
-)
+// presume this was received via a `fetch` call or by some other remote means
+// this is an alternative way of representing JSON data without repeating the property names
+const data: readonly UserData[] = [
+  { id: 1234, name: 'Dawid', emailAddress: 'dr@example.com' },
+  { id: 1235, name: 'Alex', emailAddress: null },
+]
 
-// Direct access with materialized copies
-console.log('\n=== Direct access ===')
-const firstUser = users.at(0)
-const secondUser = users.at(0)
-console.log('First user:', firstUser?.name)
-console.log('Same data?', JSON.stringify(firstUser) === JSON.stringify(secondUser)) // true - same data
-console.log('Same object?', firstUser === secondUser) // false - materialized copies
+// no further allocations while mapping
+const allNames = stream(data).map((user) => user.name)
+console.log('names:', allNames.toArray())
+
+// or, for rendering components in a framework like React
+// return proxy.map((user) => <Component user={user} />)
+
+const nameQuery = /röh/i
+const nameMatcher = (user: UserData) => nameQuery.test(user.name)
+
+// no further allocations while filtering
+for (const user of stream(data).filter(nameMatcher)) {
+  console.log(`found: ${user.name} (ID: ${user.id}, Email: ${user.emailAddress})`)
+}

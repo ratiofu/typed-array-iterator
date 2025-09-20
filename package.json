@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "bun test",
-    "generate-fixtures": "bun run src/generateFixtureData.ts",
+    "generate-fixtures": "bun run src/fixtures/generateFixtureData.ts",
     "check": "biome check --write .",
     "typecheck": "tsc --noEmit",
     "quality": "bun typecheck && bun check && bun run test",
