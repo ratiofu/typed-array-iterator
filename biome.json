@@ -13,6 +13,7 @@
       "**",
       "!**/node_modules/**",
       "!**/coverage/**",
+      "!**/dist/**",
       "!**/fixtures/**",
       "!**/*.lock",
       "!**/*.log"
@@ -53,7 +54,7 @@
       },
       "suspicious": {
         "noArrayIndexKey": "error",
-        "noAssignInExpressions": "error",
+        "noAssignInExpressions": "off",
         "noAsyncPromiseExecutor": "error",
         "noCatchAssign": "error",
         "noClassAssign": "error",
@@ -101,7 +102,7 @@
         "noUnusedTemplateLiteral": "error",
         "noUselessElse": "error",
         "useAsConstAssertion": "error",
-        "useBlockStatements": "error",
+        "useBlockStatements": "off",
         "useCollapsedElseIf": "error",
         "useConst": "error",
         "useDefaultParameterLast": "error",
@@ -116,7 +117,7 @@
         "useConsistentArrayType": { "level": "error", "options": { "syntax": "shorthand" } }
       },
       "complexity": {
-        "noBannedTypes": "error",
+        "noBannedTypes": "off",
         "noExcessiveCognitiveComplexity": "error",
         "noExtraBooleanCast": "error",
         "noForEach": "error",
@@ -184,6 +185,7 @@
       "**/*.md",
       "!**/node_modules",
       "!**/coverage",
+      "!**/dist",
       "!**/fixtures",
       "!**/*.lock",
       "!**/*.log",

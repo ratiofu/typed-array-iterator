@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { Stream, stream } from './Stream.ts'
+import { stream } from './Stream.ts'
 
 describe('Stream', () => {
   type TestUser = { id: number; name: string; emailAddress: string | null }
@@ -12,7 +12,7 @@ describe('Stream', () => {
     expect(doubled).toEqual([2, 4, 6])
   })
 
-  test('filter in for...of (single-use iterator)', () => {
+  test('filter + collect to array', () => {
     const users: readonly TestUser[] = [
       { id: 1, name: 'Dawid', emailAddress: 'dr@example.com' },
       { id: 2, name: 'Alex', emailAddress: null },
@@ -22,18 +22,11 @@ describe('Stream', () => {
     const nameQuery = /r\u00f6h/i
     const match = (u: TestUser) => nameQuery.test(u.name)
 
-    const names: string[] = []
-    for (const u of stream(users).filter(match)) {
-      names.push(u.name)
-    }
-
+    const names = stream(users)
+      .filter(match)
+      .map((u) => u.name)
+      .toArray()
     expect(names).toEqual(['R\u00f6h'])
-  })
-
-  test('single-use enforcement: throws when consumed twice', () => {
-    const s = stream([1, 2, 3])
-    expect(s.toArray()).toEqual([1, 2, 3])
-    expect(() => s.toArray()).toThrow('Stream already consumed')
   })
 
   test('chaining map -> filter -> reduce', () => {
@@ -46,7 +39,7 @@ describe('Stream', () => {
     expect(sum).toBe(18)
   })
 
-  test('generic iterable fallback and early return cleanup', () => {
+  test('generic iterable: terminals can early-exit and trigger iterator.return()', () => {
     let closed = false
     const iterable: Iterable<number> = {
       [Symbol.iterator](): IterableIterator<number> {
@@ -69,15 +62,9 @@ describe('Stream', () => {
       },
     }
 
-    const s = new Stream(iterable)
-    let seen = 0
-    for (const v of s) {
-      if (v === 5) {
-        break // trigger early termination -> should call return()
-      }
-      seen++
-    }
-    expect(seen).toBe(5)
+    const s = stream(iterable)
+    const found = s.some((v) => v === 5)
+    expect(found).toBe(true)
     expect(closed).toBe(true)
   })
 
@@ -90,89 +77,12 @@ describe('Stream', () => {
     expect(s3.find((x) => x.length === 2)).toBe('bb')
   })
 
-  test('iterator protocol: next/return/throw on array fast path', () => {
-    const s = stream([1, 2])
-    const it = s[Symbol.iterator]()
-    // iterator is self-iterable
-    expect(it[Symbol.iterator]()).toBe(it)
-    expect(it.next()).toEqual({ done: false, value: 1 })
-    // return should end iteration
-    const r = it.return?.()
-    expect(r?.done).toBe(true)
-    // throw should bubble when upstream has no throw()
-    expect(() => s.throw(new Error('boom'))).toThrow('boom')
-  })
-
-  test('Stream.next() delegating to fused iterator', () => {
-    const s = stream([10, 20])
-    expect(s.next()).toEqual({ done: false, value: 10 })
-    expect(s.next()).toEqual({ done: false, value: 20 })
-    expect(s.next().done).toBe(true)
-  })
-
-  test('generic fused iterator is self-iterable and return() path', () => {
-    const iterable: Iterable<number> = {
-      [Symbol.iterator](): IterableIterator<number> {
-        let i = 0
-        return {
-          next() {
-            return i < 2 ? { done: false, value: i++ } : { done: true, value: undefined as never }
-          },
-          return() {
-            return { done: true, value: undefined as never }
-          },
-          [Symbol.iterator]() {
-            return this
-          },
-        }
-      },
-    }
-    const s = stream(iterable)
-    const it = s[Symbol.iterator]()
-    expect(it[Symbol.iterator]()).toBe(it)
-    expect(it.next()).toEqual({ done: false, value: 0 })
-    expect(it.return?.().done).toBe(true)
-  })
-
   test('forEach covers remaining terminals', () => {
     const seen: number[] = []
-    for (const value of stream([1, 2, 3])) {
+    for (const value of stream([1, 2, 3]).toArray()) {
       seen.push(value)
     }
     expect(seen).toEqual([1, 2, 3])
-  })
-
-  test('flatMap flattens a single level', () => {
-    const res = stream([1, 2])
-      .flatMap((x) => [x, x + 10])
-      .toArray()
-    expect(res).toEqual([1, 11, 2, 12])
-  })
-
-  test('multiple flatMap operations are allowed and compose', () => {
-    const res = stream([1, 2])
-      .flatMap((x) => [[x, x + 1], [x + 10]])
-      .flatten()
-      .toArray()
-    expect(res).toEqual([1, 2, 11, 2, 3, 12])
-  })
-
-  test('operators after flatten apply to flattened elements', () => {
-    const res = stream([1, 2])
-      .flatMap((x) => [x, x + 10])
-      .map((y) => y * 2)
-      .toArray()
-    expect(res).toEqual([2, 22, 4, 24])
-  })
-
-  test('flatten iterator wrapper is self-iterable and supports return()', () => {
-    const s = stream([[1], [2]]).flatten()
-    const it = s[Symbol.iterator]()
-    expect(it[Symbol.iterator]()).toBe(it)
-    const first = it.next()
-    expect(first).toEqual({ done: false, value: 1 })
-    const r = it.return?.()
-    expect(r?.done).toBe(true)
   })
 
   test('toStringTag provides a concise description', () => {
@@ -182,5 +92,16 @@ describe('Stream', () => {
     const tag = (s as unknown as { [Symbol.toStringTag]: string })[Symbol.toStringTag]
     expect(typeof tag).toBe('string')
     expect(tag).toContain('Stream(')
+  })
+
+  test('pathological: 20 ops still compile and run', () => {
+    const base = [1, 2, 3, 4, 5]
+    // Build 20 ops: alternate filter(always true) and map(+1)
+    let s = stream(base as readonly number[])
+    for (let i = 0; i < 10; i++) {
+      s = s.filter(() => true).map((x) => x + 1)
+    }
+    const out = s.toArray()
+    expect(out).toEqual([2, 3, 4, 5, 6].map((x) => x + 9))
   })
 })

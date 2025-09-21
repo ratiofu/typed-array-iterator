@@ -5,9 +5,10 @@
       "name": "@ratiofu/type-array-proxy",
       "devDependencies": {
         "@biomejs/biome": "2.2.4",
+        "@mitata/counters": "^0.0.8",
         "@ngneat/falso": "8.0.2",
         "@types/bun": "latest",
-        "mitata": "^1.0.34",
+        "mitata": "1.0.34",
       },
       "peerDependencies": {
         "typescript": "5.9.2",
@@ -32,6 +33,8 @@
     "@biomejs/cli-win32-arm64": ["@biomejs/cli-win32-arm64@2.2.4", "", { "os": "win32", "cpu": "arm64" }, "sha512-NXnfTeKHDFUWfxAefa57DiGmu9VyKi0cDqFpdI+1hJWQjGJhJutHPX0b5m+eXvTKOaf+brU+P0JrQAZMb5yYaQ=="],
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.2.4", "", { "os": "win32", "cpu": "x64" }, "sha512-3Y4V4zVRarVh/B/eSHczR4LYoSVyv3Dfuvm3cWs5w/HScccS0+Wt/lHOcDTRYeHjQmMYVC3rIRWqyN2EI52+zg=="],
+
+    "@mitata/counters": ["@mitata/counters@0.0.8", "", {}, "sha512-f11w0Y1ETFlarDP7CePj8Z+y8Gv5Ax4gMxWsEwrqh0kH/YIY030Ezx5SUJeQg0YPTZ2OHKGcLG1oGJbIqHzaJA=="],
 
     "@ngneat/falso": ["@ngneat/falso@8.0.2", "", { "dependencies": { "seedrandom": "3.0.5", "uuid": "8.3.2" } }, "sha512-vhPtuoHoxE5JGWPSPBqEyTXcjI4MAn8GllR+Vs8FfpAQu2sQRd4PJc3e8kc9vdbdhYHx1C9HmbECgtGLK30z4w=="],
 

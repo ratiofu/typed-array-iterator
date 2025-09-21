@@ -24,6 +24,6 @@ const nameQuery = /röh/i
 const nameMatcher = (user: UserData) => nameQuery.test(user.name)
 
 // no further allocations while filtering
-for (const user of stream(data).filter(nameMatcher)) {
+for (const user of stream(data).filter(nameMatcher).toArray()) {
   console.log(`found: ${user.name} (ID: ${user.id}, Email: ${user.emailAddress})`)
 }
