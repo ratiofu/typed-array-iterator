@@ -3,10 +3,7 @@ import { buildOpsUnrolled, emitArrayLoop, emitIterableLoop, emptyArray } from '.
 import type { FilterFn, FilterOp, MapFn, MapOp, Op } from './stream/types'
 
 // Terminal snippets
-const TERMINAL_TO_ARRAY = `
-result.push(currentValue)
-emittedIndex++
-`
+const TERMINAL_TO_ARRAY = 'result[emittedIndex++] = currentValue'
 const TERMINAL_FOR_EACH = 'sink(currentValue, emittedIndex++)'
 const TERMINAL_SOME = 'if (terminalPredicate(currentValue, emittedIndex++)) { return true }'
 const TERMINAL_EVERY = 'if (!terminalPredicate(currentValue, emittedIndex++)) { return false }'
@@ -103,12 +100,20 @@ export class Stream<T> {
    */
   toArray(): T[] {
     const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
+    const hasFilter = this.#ops.some((op) => op.kind === 'filter')
     argNames.unshift('data')
     return new Function(
       ...argNames,
       `
-const result = []
+${
+  this.#arrayLike
+    ? hasFilter
+      ? 'const result = new Array(data.length >>> 1)'
+      : 'const result = new Array(data.length)'
+    : 'const result = []'
+}
 ${this.#arrayLike ? emitArrayLoop(lines, TERMINAL_TO_ARRAY) : emitIterableLoop(lines, TERMINAL_TO_ARRAY)}
+result.length = emittedIndex
 return result
       `
     )(this.#source, ...argValues)
