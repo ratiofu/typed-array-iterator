@@ -25,12 +25,12 @@ export function buildOpsUnrolled(ops: readonly Op[]): BuiltOps {
       filterFns.push(op.fn as FilterFn)
       const argName = `filter${filterFns.length}`
       filterNames.push(argName)
-      lines.push(`if (!${argName}(currentValue, index)) { continue }`)
+      lines.push(`  if (!${argName}(currentValue, index)) { continue }`)
     } else {
       mapFns.push(op.fn as MapFn)
       const argName = `map${mapFns.length}`
       mapNames.push(argName)
-      lines.push(`currentValue = ${argName}(currentValue, index)`)
+      lines.push(`  currentValue = ${argName}(currentValue, index)`)
     }
   }
 
@@ -38,4 +38,35 @@ export function buildOpsUnrolled(ops: readonly Op[]): BuiltOps {
   const argValues: ReadonlyArray<MapFn | FilterFn> = [...filterFns, ...mapFns]
 
   return { argNames, argValues, lines }
+}
+
+/**
+ * Emit the common array-like loop with fused pipeline `lines` and terminal `terminalLines`.
+ */
+export function emitArrayLoop(lines: readonly string[], terminal: string): string {
+  return `
+const dataLength = data.length
+let logicalIndex = 0
+let emittedIndex = 0
+for (let i = 0; i < dataLength; i++) {
+  let currentValue = data[i]
+  const index = logicalIndex++
+${lines.join('\n')}
+${terminal}
+}`
+}
+
+/**
+ * Emit the common iterable loop with fused pipeline `lines` and terminal `terminalLines`.
+ */
+export function emitIterableLoop(lines: readonly string[], terminal: string): string {
+  return `
+let logicalIndex = 0
+let emittedIndex = 0
+for (const currentValueRaw of iterable) {
+  let currentValue = currentValueRaw
+  const index = logicalIndex++
+${lines.join('\n')}
+${terminal}
+}`
 }

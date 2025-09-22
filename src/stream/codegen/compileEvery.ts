@@ -1,5 +1,5 @@
 import type { FilterFn, Op } from '../types'
-import { buildOpsUnrolled } from './shared'
+import { buildOpsUnrolled, emitArrayLoop, emitIterableLoop } from './shared'
 
 /**
  * Compile a specialized `every` terminal.
@@ -19,17 +19,9 @@ export function compileEvery(
   if (isArrayLikeSource) {
     const srcArgs = ['data', 'terminalPredicate', ...argNames]
     const body = `
-const dataLength = data.length
-let logicalIndex = 0
-let emittedIndex = 0
-for (let i = 0; i < dataLength; i++) {
-  let currentValue = data[i]
-  const index = logicalIndex++
-  ${lines.map((l) => `  ${l}`).join('\n')}
-  if (!terminalPredicate(currentValue, emittedIndex++)) { return false }
-}
+${emitArrayLoop(lines, '  if (!terminalPredicate(currentValue, emittedIndex++)) { return false }')}
 return true
-    `
+`
     const fn = new Function(...srcArgs, body) as (
       data: ArrayLike<unknown>,
       terminalPredicate: (v: unknown, i: number) => boolean,
@@ -40,16 +32,9 @@ return true
 
   const srcArgs = ['iterable', 'terminalPredicate', ...argNames]
   const body = `
-let logicalIndex = 0
-let emittedIndex = 0
-for (const currentValueRaw of iterable) {
-  let currentValue = currentValueRaw
-  const index = logicalIndex++
-  ${lines.map((l) => `  ${l}`).join('\n')}
-  if (!terminalPredicate(currentValue, emittedIndex++)) { return false }
-}
+${emitIterableLoop(lines, '  if (!terminalPredicate(currentValue, emittedIndex++)) { return false }')}
 return true
-  `
+`
   const fn = new Function(...srcArgs, body) as (
     iterable: Iterable<unknown>,
     terminalPredicate: (v: unknown, i: number) => boolean,

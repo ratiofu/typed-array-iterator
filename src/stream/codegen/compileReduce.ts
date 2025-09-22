@@ -1,6 +1,6 @@
 import type { Op } from '../types'
 
-import { buildOpsUnrolled } from './shared'
+import { buildOpsUnrolled, emitArrayLoop, emitIterableLoop } from './shared'
 
 /**
  * Compile a specialized `reduce` terminal.
@@ -22,26 +22,21 @@ export function compileReduce(
   if (isArrayLikeSource) {
     const srcArgs = ['data', 'reducer', 'hasInitial', 'initialValue', ...argNames]
     const body = `
-const dataLength = data.length
-let logicalIndex = 0
-let emittedIndex = 0
 let started = hasInitial
 let accumulator = initialValue
-for (let i = 0; i < dataLength; i++) {
-  let currentValue = data[i]
-  const index = logicalIndex++
-  ${lines.map((l) => `  ${l}`).join('\n')}
-  if (started) {
+${emitArrayLoop(
+  lines,
+  `  if (started) {
     accumulator = reducer(accumulator, currentValue, emittedIndex++)
   } else {
     accumulator = currentValue
     started = true
     emittedIndex++
-  }
-}
+  }`
+)}
 if (!started) { throw new TypeError("Reduce of empty stream with no initial value") }
 return accumulator
-    `
+`
     const fn = new Function(...srcArgs, body) as (
       data: ArrayLike<unknown>,
       reducer: (a: unknown, v: unknown, i: number) => unknown,
@@ -55,25 +50,21 @@ return accumulator
 
   const srcArgs = ['iterable', 'reducer', 'hasInitial', 'initialValue', ...argNames]
   const body = `
-let logicalIndex = 0
-let emittedIndex = 0
 let started = hasInitial
 let accumulator = initialValue
-for (const currentValueRaw of iterable) {
-  let currentValue = currentValueRaw
-  const index = logicalIndex++
-${lines.map((l) => `  ${l}`).join('\n')}
-  if (started) {
+${emitIterableLoop(
+  lines,
+  `  if (started) {
     accumulator = reducer(accumulator, currentValue, emittedIndex++)
   } else {
     accumulator = currentValue
     started = true
     emittedIndex++
-  }
-}
+  }`
+)}
 if (!started) { throw new TypeError("Reduce of empty stream with no initial value") }
 return accumulator
-  `
+`
   const fn = new Function(...srcArgs, body) as (
     iterable: Iterable<unknown>,
     reducer: (a: unknown, v: unknown, i: number) => unknown,

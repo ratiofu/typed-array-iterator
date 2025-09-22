@@ -1,5 +1,5 @@
 import type { Op } from '../types'
-import { buildOpsUnrolled } from './shared'
+import { buildOpsUnrolled, emitArrayLoop, emitIterableLoop } from './shared'
 
 /**
  * Compile a specialized `toArray` terminal that materializes results.
@@ -19,18 +19,9 @@ export function compileToArray(
     const srcArgs = ['data', ...argNames]
     const body = `
 const result = []
-const dataLength = data.length
-let logicalIndex = 0
-let emittedIndex = 0
-for (let i = 0; i < dataLength; i++) {
-  let currentValue = data[i]
-  const index = logicalIndex++
-  ${lines.map((l) => `  ${l}`).join('\n')}
-  result.push(currentValue)
-  emittedIndex++
-}
+${emitArrayLoop(lines, '  result.push(currentValue)\n  emittedIndex++')}
 return result
-    `
+`
     const fn = new Function(...srcArgs, body) as (
       data: ArrayLike<unknown>,
       ...fns: Function[]
@@ -41,17 +32,9 @@ return result
   const srcArgs = ['iterable', ...argNames]
   const body = `
 const result = []
-let logicalIndex = 0
-let emittedIndex = 0
-for (const currentValueRaw of iterable) {
-  let currentValue = currentValueRaw
-  const index = logicalIndex++
-${lines.map((l) => `  ${l}`).join('\n')}
-  result.push(currentValue)
-  emittedIndex++
-}
+${emitIterableLoop(lines, '  result.push(currentValue)\n  emittedIndex++')}
 return result
-  `
+`
   const fn = new Function(...srcArgs, body) as (
     iterable: Iterable<unknown>,
     ...fns: Function[]
