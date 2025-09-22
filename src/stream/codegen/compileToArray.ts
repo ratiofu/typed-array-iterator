@@ -1,6 +1,8 @@
 import type { Op } from '../types'
 import { buildOpsUnrolled, emitArrayLoop, emitIterableLoop } from './shared'
 
+const TERMINAL = '  result.push(currentValue)\n  emittedIndex++'
+
 /**
  * Compile a specialized `toArray` terminal that materializes results.
  *
@@ -15,29 +17,12 @@ export function compileToArray(
 ): (source: Iterable<unknown> | ArrayLike<unknown>) => unknown[] {
   const { argNames, argValues, lines } = buildOpsUnrolled(ops)
 
-  if (isArrayLikeSource) {
-    const srcArgs = ['data', ...argNames]
-    const body = `
-const result = []
-${emitArrayLoop(lines, '  result.push(currentValue)\n  emittedIndex++')}
-return result
-`
-    const fn = new Function(...srcArgs, body) as (
-      data: ArrayLike<unknown>,
-      ...fns: Function[]
-    ) => unknown[]
-    return (source) => fn(source as ArrayLike<unknown>, ...argValues)
-  }
-
-  const srcArgs = ['iterable', ...argNames]
+  const srcArgs = ['data', ...argNames]
   const body = `
 const result = []
-${emitIterableLoop(lines, '  result.push(currentValue)\n  emittedIndex++')}
+${isArrayLikeSource ? emitArrayLoop(lines, TERMINAL) : emitIterableLoop(lines, TERMINAL)}
 return result
 `
-  const fn = new Function(...srcArgs, body) as (
-    iterable: Iterable<unknown>,
-    ...fns: Function[]
-  ) => unknown[]
-  return (source) => fn(source as Iterable<unknown>, ...argValues)
+  const fn = new Function(...srcArgs, body)
+  return (source) => fn(source, ...argValues)
 }

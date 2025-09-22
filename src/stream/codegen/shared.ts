@@ -63,7 +63,7 @@ export function emitIterableLoop(lines: readonly string[], terminal: string): st
   return `
 let logicalIndex = 0
 let emittedIndex = 0
-for (const currentValueRaw of iterable) {
+for (const currentValueRaw of data) {
   let currentValue = currentValueRaw
   const index = logicalIndex++
 ${lines.join('\n')}
