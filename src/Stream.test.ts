@@ -248,5 +248,22 @@ describe('Stream', () => {
       const sumIdx = stream([1, 1, 1] as const).reduce((acc, _v, i) => acc + i, 0)
       expect(sumIdx).toBe(3)
     })
+
+    describe('Arity-aware pipeline (ops)', () => {
+      test('arraylike: map/filter using index', () => {
+        const out = stream([10, 20, 30] as const)
+          .map((v, i) => v + i)
+          .filter((_v, i) => (i & 1) === 0)
+          .toArray()
+        expect(out).toEqual([10, 32])
+      })
+
+      test('iterable: filter using index', () => {
+        const out = stream(new Set([1, 2, 3, 4]) as Set<number>)
+          .filter((_v, i) => (i & 1) === 1)
+          .toArray()
+        expect(out).toEqual([2, 4])
+      })
+    })
   })
 })

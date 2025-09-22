@@ -17,27 +17,38 @@ export function buildOpsUnrolled(ops: readonly Op[]): BuiltOps {
   const mapNames: string[] = []
   const filterNames: string[] = []
   const lines: string[] = []
+  let opsNeedIndex = false
 
   for (let i = 0; i < ops.length; i++) {
     // biome-ignore lint/style/noNonNullAssertion: we know this is in-bounds
     const op = ops[i]!
     if (op.kind === 'filter') {
-      filterFns.push(op.fn as FilterFn)
+      filterFns.push(op.fn)
       const argName = `filter${filterFns.length}`
       filterNames.push(argName)
-      lines.push(`  if (!${argName}(currentValue, index)) { continue }`)
+      opsNeedIndex ||= op.fn.length >= 2
+      lines.push(
+        op.fn.length >= 2
+          ? `  if (!${argName}(currentValue, index)) { continue }`
+          : `  if (!${argName}(currentValue)) { continue }`
+      )
     } else {
-      mapFns.push(op.fn as MapFn)
+      mapFns.push(op.fn)
       const argName = `map${mapFns.length}`
       mapNames.push(argName)
-      lines.push(`  currentValue = ${argName}(currentValue, index)`)
+      opsNeedIndex ||= op.fn.length >= 2
+      lines.push(
+        op.fn.length >= 2
+          ? `  currentValue = ${argName}(currentValue, index)`
+          : `  currentValue = ${argName}(currentValue)`
+      )
     }
   }
 
   const argNames = [...filterNames, ...mapNames]
   const argValues: ReadonlyArray<MapFn | FilterFn> = [...filterFns, ...mapFns]
 
-  return { argNames, argValues, lines }
+  return { argNames, argValues, lines, opsNeedIndex }
 }
 
 /**
@@ -57,13 +68,25 @@ ${terminal}
 /**
  * Emit the common iterable loop with fused pipeline `lines` and terminal `terminalLines`.
  */
-export function emitIterableLoop(lines: readonly string[], terminal: string): string {
-  return `
+export function emitIterableLoop(
+  lines: readonly string[],
+  terminal: string,
+  needsIndex = true
+): string {
+  return needsIndex
+    ? `
 let logicalIndex = 0
 let emittedIndex = 0
 for (const currentValueRaw of data) {
   let currentValue = currentValueRaw
   const index = logicalIndex++
+${lines.join('\n')}
+${terminal}
+}`
+    : `
+let emittedIndex = 0
+for (const currentValueRaw of data) {
+  let currentValue = currentValueRaw
 ${lines.join('\n')}
 ${terminal}
 }`

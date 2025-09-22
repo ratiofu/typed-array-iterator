@@ -9,4 +9,5 @@ export type BuiltOps = {
   argNames: string[]
   argValues: ReadonlyArray<MapFn | FilterFn>
   lines: string[]
+  opsNeedIndex: boolean
 }

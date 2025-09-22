@@ -34,7 +34,8 @@ if (started) {
 
 /**
  * Lazy, compiled pipeline builder for iterables. Achieves similar performance as
- * manual loops while providing a functional, declarative API.
+ * manual loops while providing a functional, declarative API. On v8, this approach
+ * is consistently faster than array methods.
  *
  * Notes:
  * - Stream is NOT iterable; you must call a terminal (e.g. toArray, forEach, reduce)
@@ -114,7 +115,7 @@ export class Stream<T> {
    * Compiles and runs a specialized toArray for this stream.
    */
   toArray(): T[] {
-    const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
+    const { argNames, argValues, lines, opsNeedIndex } = buildOpsUnrolled(this.#ops)
     const hasFilter = this.#ops.some((op) => op.kind === 'filter')
     argNames.unshift('data')
     return new Function(
@@ -127,7 +128,7 @@ ${
       : 'const result = new Array(data.length)'
     : 'const result = []'
 }
-${this.#arrayLike ? emitArrayLoop(lines, TERMINAL_TO_ARRAY) : emitIterableLoop(lines, TERMINAL_TO_ARRAY)}
+${this.#arrayLike ? emitArrayLoop(lines, TERMINAL_TO_ARRAY) : emitIterableLoop(lines, TERMINAL_TO_ARRAY, opsNeedIndex)}
 result.length = emittedIndex
 return result
       `
@@ -139,12 +140,14 @@ return result
    * Executes a compiled forEach with the provided sink.
    */
   forEach(fn: (value: T, index: number) => void): void {
-    const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
+    const { argNames, argValues, lines, opsNeedIndex } = buildOpsUnrolled(this.#ops)
     const terminal = fn.length >= 2 ? TERMINAL_FOR_EACH : TERMINAL_FOR_EACH_NO_INDEX
     argNames.unshift('data', 'sink')
     new Function(
       ...argNames,
-      this.#arrayLike ? emitArrayLoop(lines, terminal) : emitIterableLoop(lines, terminal)
+      this.#arrayLike
+        ? emitArrayLoop(lines, terminal)
+        : emitIterableLoop(lines, terminal, opsNeedIndex || fn.length >= 2)
     )(this.#source, fn, ...argValues)
   }
 
@@ -153,7 +156,7 @@ return result
    * If `initialValue` is omitted, the first emitted element is used as the seed.
    */
   reduce<U = T>(reducer: (previous: U, current: T, index: number) => U, initialValue?: U): U {
-    const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
+    const { argNames, argValues, lines, opsNeedIndex } = buildOpsUnrolled(this.#ops)
     const terminal = reducer.length >= 3 ? TERMINAL_REDUCE : TERMINAL_REDUCE_NO_INDEX
     argNames.unshift('data', 'reducer', 'hasInitial', 'initialValue')
     return new Function(
@@ -161,7 +164,11 @@ return result
       `
 let started = hasInitial
 let accumulator = initialValue
-${this.#arrayLike ? emitArrayLoop(lines, terminal) : emitIterableLoop(lines, terminal)}
+${
+  this.#arrayLike
+    ? emitArrayLoop(lines, terminal)
+    : emitIterableLoop(lines, terminal, opsNeedIndex || reducer.length >= 3)
+}
 if (!started) { throw new TypeError("Reduce of empty stream with no initial value") }
 return accumulator
 `
@@ -172,13 +179,17 @@ return accumulator
    * Terminal: returns true if any element satisfies the predicate.
    */
   some(predicate: (value: T, index: number) => boolean): boolean {
-    const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
+    const { argNames, argValues, lines, opsNeedIndex } = buildOpsUnrolled(this.#ops)
     const terminal = predicate.length >= 2 ? TERMINAL_SOME : TERMINAL_SOME_NO_INDEX
     argNames.unshift('data', 'terminalPredicate')
     return new Function(
       ...argNames,
       `
-${this.#arrayLike ? emitArrayLoop(lines, terminal) : emitIterableLoop(lines, terminal)}
+${
+  this.#arrayLike
+    ? emitArrayLoop(lines, terminal)
+    : emitIterableLoop(lines, terminal, opsNeedIndex || predicate.length >= 2)
+}
 return false
       `
     )(this.#source, predicate, ...argValues)
@@ -188,13 +199,17 @@ return false
    * Terminal: returns true if all elements satisfy the predicate.
    */
   every(predicate: (value: T, index: number) => boolean): boolean {
-    const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
+    const { argNames, argValues, lines, opsNeedIndex } = buildOpsUnrolled(this.#ops)
     const terminal = predicate.length >= 2 ? TERMINAL_EVERY : TERMINAL_EVERY_NO_INDEX
     argNames.unshift('data', 'terminalPredicate')
     return new Function(
       ...argNames,
       `
-${this.#arrayLike ? emitArrayLoop(lines, terminal) : emitIterableLoop(lines, terminal)}
+${
+  this.#arrayLike
+    ? emitArrayLoop(lines, terminal)
+    : emitIterableLoop(lines, terminal, opsNeedIndex || predicate.length >= 2)
+}
 return true
       `
     )(this.#source, predicate, ...argValues)
@@ -204,13 +219,17 @@ return true
    * Terminal: returns the first element satisfying the predicate, or undefined.
    */
   find(predicate: (value: T, index: number) => boolean): T | undefined {
-    const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
+    const { argNames, argValues, lines, opsNeedIndex } = buildOpsUnrolled(this.#ops)
     const terminal = predicate.length >= 2 ? TERMINAL_FIND : TERMINAL_FIND_NO_INDEX
     argNames.unshift('data', 'terminalPredicate')
     return new Function(
       ...argNames,
       `
-${this.#arrayLike ? emitArrayLoop(lines, terminal) : emitIterableLoop(lines, terminal)}
+${
+  this.#arrayLike
+    ? emitArrayLoop(lines, terminal)
+    : emitIterableLoop(lines, terminal, opsNeedIndex || predicate.length >= 2)
+}
 return undefined
       `
     )(this.#source, predicate, ...argValues)
