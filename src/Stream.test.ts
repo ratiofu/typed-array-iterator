@@ -227,4 +227,26 @@ describe('Stream', () => {
       )
     })
   })
+
+  describe('Arity-aware terminals', () => {
+    test('some: uses emitted index when predicate arity >= 2', () => {
+      const out = stream([10, 20, 30] as const).some((_v, i) => i === 1)
+      expect(out).toBe(true)
+    })
+
+    test('every: uses emitted index for iterable when predicate arity >= 2', () => {
+      const out = stream(new Set([1, 2, 3]) as Set<number>).every((_v, i) => i < 3)
+      expect(out).toBe(true)
+    })
+
+    test('find: uses emitted index when predicate arity >= 2', () => {
+      const out = stream([5, 6, 7] as const).find((_v, i) => i === 2)
+      expect(out).toBe(7)
+    })
+
+    test('reduce: omits index when reducer arity < 3, uses when >= 3', () => {
+      const sumIdx = stream([1, 1, 1] as const).reduce((acc, _v, i) => acc + i, 0)
+      expect(sumIdx).toBe(3)
+    })
+  })
 })

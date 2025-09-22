@@ -2,7 +2,7 @@ import { isArrayLike } from './stream/isArrayLike'
 import { buildOpsUnrolled, emitArrayLoop, emitIterableLoop, emptyArray } from './stream/shared'
 import type { FilterFn, FilterOp, MapFn, MapOp, Op } from './stream/types'
 
-// Terminal snippets
+// Terminal snippets, with index call supported for operations
 const TERMINAL_TO_ARRAY = 'result[emittedIndex++] = currentValue'
 const TERMINAL_FOR_EACH = 'sink(currentValue, emittedIndex++)'
 const TERMINAL_SOME = 'if (terminalPredicate(currentValue, emittedIndex++)) { return true }'
@@ -18,8 +18,23 @@ if (started) {
 }
 `
 
+// Terminal snippets, without index support
+const TERMINAL_FOR_EACH_NO_INDEX = 'sink(currentValue)'
+const TERMINAL_SOME_NO_INDEX = 'if (terminalPredicate(currentValue)) { return true }'
+const TERMINAL_EVERY_NO_INDEX = 'if (!terminalPredicate(currentValue)) { return false }'
+const TERMINAL_FIND_NO_INDEX = 'if (terminalPredicate(currentValue)) { return currentValue }'
+const TERMINAL_REDUCE_NO_INDEX = `
+if (started) {
+  accumulator = reducer(accumulator, currentValue)
+} else {
+  accumulator = currentValue
+  started = true
+}
+`
+
 /**
- * Single-use, lazy pipeline builder for iterables (Java-style semantics).
+ * Lazy, compiled pipeline builder for iterables. Achieves similar performance as
+ * manual loops while providing a functional, declarative API.
  *
  * Notes:
  * - Stream is NOT iterable; you must call a terminal (e.g. toArray, forEach, reduce)
@@ -125,12 +140,11 @@ return result
    */
   forEach(fn: (value: T, index: number) => void): void {
     const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
+    const terminal = fn.length >= 2 ? TERMINAL_FOR_EACH : TERMINAL_FOR_EACH_NO_INDEX
     argNames.unshift('data', 'sink')
     new Function(
       ...argNames,
-      this.#arrayLike
-        ? emitArrayLoop(lines, TERMINAL_FOR_EACH)
-        : emitIterableLoop(lines, TERMINAL_FOR_EACH)
+      this.#arrayLike ? emitArrayLoop(lines, terminal) : emitIterableLoop(lines, terminal)
     )(this.#source, fn, ...argValues)
   }
 
@@ -140,13 +154,14 @@ return result
    */
   reduce<U = T>(reducer: (previous: U, current: T, index: number) => U, initialValue?: U): U {
     const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
+    const terminal = reducer.length >= 3 ? TERMINAL_REDUCE : TERMINAL_REDUCE_NO_INDEX
     argNames.unshift('data', 'reducer', 'hasInitial', 'initialValue')
     return new Function(
       ...argNames,
       `
 let started = hasInitial
 let accumulator = initialValue
-${this.#arrayLike ? emitArrayLoop(lines, TERMINAL_REDUCE) : emitIterableLoop(lines, TERMINAL_REDUCE)}
+${this.#arrayLike ? emitArrayLoop(lines, terminal) : emitIterableLoop(lines, terminal)}
 if (!started) { throw new TypeError("Reduce of empty stream with no initial value") }
 return accumulator
 `
@@ -158,11 +173,12 @@ return accumulator
    */
   some(predicate: (value: T, index: number) => boolean): boolean {
     const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
+    const terminal = predicate.length >= 2 ? TERMINAL_SOME : TERMINAL_SOME_NO_INDEX
     argNames.unshift('data', 'terminalPredicate')
     return new Function(
       ...argNames,
       `
-${this.#arrayLike ? emitArrayLoop(lines, TERMINAL_SOME) : emitIterableLoop(lines, TERMINAL_SOME)}
+${this.#arrayLike ? emitArrayLoop(lines, terminal) : emitIterableLoop(lines, terminal)}
 return false
       `
     )(this.#source, predicate, ...argValues)
@@ -173,11 +189,12 @@ return false
    */
   every(predicate: (value: T, index: number) => boolean): boolean {
     const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
+    const terminal = predicate.length >= 2 ? TERMINAL_EVERY : TERMINAL_EVERY_NO_INDEX
     argNames.unshift('data', 'terminalPredicate')
     return new Function(
       ...argNames,
       `
-${this.#arrayLike ? emitArrayLoop(lines, TERMINAL_EVERY) : emitIterableLoop(lines, TERMINAL_EVERY)}
+${this.#arrayLike ? emitArrayLoop(lines, terminal) : emitIterableLoop(lines, terminal)}
 return true
       `
     )(this.#source, predicate, ...argValues)
@@ -188,11 +205,12 @@ return true
    */
   find(predicate: (value: T, index: number) => boolean): T | undefined {
     const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
+    const terminal = predicate.length >= 2 ? TERMINAL_FIND : TERMINAL_FIND_NO_INDEX
     argNames.unshift('data', 'terminalPredicate')
     return new Function(
       ...argNames,
       `
-${this.#arrayLike ? emitArrayLoop(lines, TERMINAL_FIND) : emitIterableLoop(lines, TERMINAL_FIND)}
+${this.#arrayLike ? emitArrayLoop(lines, terminal) : emitIterableLoop(lines, terminal)}
 return undefined
       `
     )(this.#source, predicate, ...argValues)
