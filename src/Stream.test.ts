@@ -131,4 +131,100 @@ describe('Stream', () => {
       [4, 1],
     ])
   })
+
+  // Inlined compiler tests (moved from src/stream/codegen/*.test.ts)
+  describe('Inlined compilers: toArray', () => {
+    test('arraylike path: map + filter', () => {
+      const out = stream([1, 2, 3, 4] as const)
+        .map((v) => v * 2)
+        .filter((v) => (v & 1) === 0)
+        .toArray()
+      expect(out).toEqual([2, 4, 6, 8])
+    })
+
+    test('iterable path: filter only', () => {
+      const out = stream(new Set([1, 2, 3, 4]) as Set<number>)
+        .filter((v) => (v & 1) === 0)
+        .toArray()
+      expect(out).toEqual([2, 4])
+    })
+  })
+
+  describe('Inlined compilers: forEach', () => {
+    test('arraylike: applies ops and calls sink with emitted index', () => {
+      const seen: [unknown, number][] = []
+      stream([1, 2, 3] as const)
+        .map((v) => v + 1)
+        .filter((v) => v > 2)
+        .forEach((v, i) => {
+          seen.push([v, i])
+        })
+      expect(seen).toEqual([
+        [3, 0],
+        [4, 1],
+      ])
+    })
+
+    test('iterable: iterates with for..of and respects ops', () => {
+      const seen: unknown[] = []
+      // biome-ignore lint/complexity/noForEach: this test validates Stream.forEach terminal
+      stream(new Set([1, 2, 3, 4]) as Set<number>)
+        .map((v) => v * 3)
+        .filter((v) => v % 2 === 0)
+        .forEach((v) => {
+          seen.push(v)
+        })
+      expect(seen).toEqual([6, 12])
+    })
+  })
+
+  describe('Inlined compilers: some/every/find', () => {
+    test('some: arraylike true when any matches after ops', () => {
+      const out = stream([1, 2, 10] as const)
+        .map((v) => v + 1)
+        .some((v) => v === 3)
+      expect(out).toBe(true)
+    })
+
+    test('every: iterable false when at least one fails', () => {
+      const out = stream(new Set([1, 2, 10]) as Set<number>)
+        .map((v) => v + 1)
+        .every((v) => v < 4)
+      expect(out).toBe(false)
+    })
+
+    test('find: arraylike returns first matching after ops', () => {
+      const out = stream([1, 2, 3] as const)
+        .map((v) => v * 2)
+        .find((v) => v > 2)
+      expect(out).toBe(4)
+    })
+
+    test('find: iterable returns undefined when none match', () => {
+      const out = stream(new Set([1, 2, 3]) as Set<number>).find((v) => v > 10)
+      expect(out).toBeUndefined()
+    })
+  })
+
+  describe('Inlined compilers: reduce', () => {
+    test('arraylike: sum with initial value', () => {
+      const sum = stream([1, -2, 3] as const)
+        .filter((v) => v > 0)
+        .reduce((acc, v) => acc + v, 10)
+      expect(sum).toBe(14)
+    })
+
+    test('iterable: sum without initial value', () => {
+      const sum = stream(new Set([1, 2, 3]) as Set<number>)
+        .map((v) => v * 2)
+        .reduce((acc, v) => acc + v)
+      expect(sum).toBe(12)
+    })
+
+    test('throws on empty source without initial', () => {
+      expect(() => stream([] as number[]).reduce((acc, v) => acc + v)).toThrow(
+        'Reduce of empty stream with no initial value'
+      )
+    })
+  })
 })

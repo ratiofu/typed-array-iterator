@@ -1,12 +1,25 @@
-import { emptyArray } from './lib/empty'
-import { compileEvery } from './stream/codegen/compileEvery'
-import { compileFind } from './stream/codegen/compileFind'
-import { compileForEach } from './stream/codegen/compileForEach'
-import { compileReduce } from './stream/codegen/compileReduce'
-import { compileSome } from './stream/codegen/compileSome'
-import { compileToArray } from './stream/codegen/compileToArray'
 import { isArrayLike } from './stream/isArrayLike'
+import { buildOpsUnrolled, emitArrayLoop, emitIterableLoop, emptyArray } from './stream/shared'
 import type { FilterFn, FilterOp, MapFn, MapOp, Op } from './stream/types'
+
+// Terminal snippets
+const TERMINAL_TO_ARRAY = `
+result.push(currentValue)
+emittedIndex++
+`
+const TERMINAL_FOR_EACH = 'sink(currentValue, emittedIndex++)'
+const TERMINAL_SOME = 'if (terminalPredicate(currentValue, emittedIndex++)) { return true }'
+const TERMINAL_EVERY = 'if (!terminalPredicate(currentValue, emittedIndex++)) { return false }'
+const TERMINAL_FIND = 'if (terminalPredicate(currentValue, emittedIndex++)) { return currentValue }'
+const TERMINAL_REDUCE = `
+if (started) {
+  accumulator = reducer(accumulator, currentValue, emittedIndex++)
+} else {
+  accumulator = currentValue
+  started = true
+  emittedIndex++
+}
+`
 
 /**
  * Single-use, lazy pipeline builder for iterables (Java-style semantics).
@@ -41,7 +54,6 @@ export class Stream<T> {
    * @param fn mapping function `(value, index) => nextValue`
    * @returns a new Stream of U
    */
-
   map<U>(fn: (value: T, index: number) => U): Stream<U> {
     const op: MapOp = { kind: 'map', fn: fn as MapFn }
     // this type hack is necessary and intentional ↓
@@ -54,7 +66,6 @@ export class Stream<T> {
    * @param predicate `(value, index) => boolean` or type guard
    * @returns a new Stream narrowed/filtered by the predicate
    */
-
   filter<S extends T>(predicate: (value: T, index: number) => value is S): Stream<S>
   filter(predicate: (value: T, index: number) => boolean): Stream<T>
   filter<S extends T>(predicate: (value: T, index: number) => boolean): Stream<S | T> {
@@ -66,8 +77,6 @@ export class Stream<T> {
     return new Stream<S | T>(this.#source, [...this.#ops, op])
   }
 
-  // Convenience helpers implemented as filters (no early-stop semantics)
-  // drop: skip the first n elements; take: keep only the first n elements
   /**
    * Skip the first `n` elements.
    * Implemented as a filter without early-stop semantics.
@@ -86,13 +95,23 @@ export class Stream<T> {
     return this.filter(() => remaining-- > 0)
   }
 
+  // ---- Terminals ----
+
   /**
    * Terminal: materialize the pipeline into an array.
    * Compiles and runs a specialized toArray for this stream.
    */
   toArray(): T[] {
-    const run = compileToArray(this.#arrayLike, this.#ops)
-    return run(this.#source) as T[]
+    const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
+    argNames.unshift('data')
+    return new Function(
+      ...argNames,
+      `
+const result = []
+${this.#arrayLike ? emitArrayLoop(lines, TERMINAL_TO_ARRAY) : emitIterableLoop(lines, TERMINAL_TO_ARRAY)}
+return result
+      `
+    )(this.#source, ...argValues)
   }
 
   /**
@@ -100,12 +119,14 @@ export class Stream<T> {
    * Executes a compiled forEach with the provided sink.
    */
   forEach(fn: (value: T, index: number) => void): void {
-    const run = compileForEach(
-      this.#arrayLike,
-      this.#ops,
-      fn as unknown as (value: unknown, index: number) => void
-    )
-    run(this.#source)
+    const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
+    const srcArgs = ['data', 'sink', ...argNames]
+    new Function(
+      ...srcArgs,
+      this.#arrayLike
+        ? emitArrayLoop(lines, TERMINAL_FOR_EACH)
+        : emitIterableLoop(lines, TERMINAL_FOR_EACH)
+    )(this.#source, fn, ...argValues)
   }
 
   /**
@@ -113,39 +134,62 @@ export class Stream<T> {
    * If `initialValue` is omitted, the first emitted element is used as the seed.
    */
   reduce<U = T>(reducer: (previous: U, current: T, index: number) => U, initialValue?: U): U {
-    const run = compileReduce(
-      this.#arrayLike,
-      this.#ops,
-      reducer as unknown as (accumulator: unknown, value: unknown, index: number) => unknown,
-      initialValue !== undefined,
-      initialValue as unknown
-    )
-    return run(this.#source) as U
+    const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
+    const srcArgs = ['data', 'reducer', 'hasInitial', 'initialValue', ...argNames]
+    return new Function(
+      ...srcArgs,
+      `
+let started = hasInitial
+let accumulator = initialValue
+${this.#arrayLike ? emitArrayLoop(lines, TERMINAL_REDUCE) : emitIterableLoop(lines, TERMINAL_REDUCE)}
+if (!started) { throw new TypeError("Reduce of empty stream with no initial value") }
+return accumulator`
+    )(this.#source, reducer, initialValue !== undefined, initialValue, ...argValues) as U
   }
 
-  // Terminal helpers
   /**
    * Terminal: returns true if any element satisfies the predicate.
    */
   some(predicate: (value: T, index: number) => boolean): boolean {
-    const run = compileSome(this.#arrayLike, this.#ops, predicate as FilterFn)
-    return run(this.#source)
+    const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
+    const srcArgs = ['data', 'terminalPredicate', ...argNames]
+    return new Function(
+      ...srcArgs,
+      `
+${this.#arrayLike ? emitArrayLoop(lines, TERMINAL_SOME) : emitIterableLoop(lines, TERMINAL_SOME)}
+return false
+      `
+    )(this.#source, predicate, ...argValues)
   }
 
   /**
    * Terminal: returns true if all elements satisfy the predicate.
    */
   every(predicate: (value: T, index: number) => boolean): boolean {
-    const run = compileEvery(this.#arrayLike, this.#ops, predicate as FilterFn)
-    return run(this.#source)
+    const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
+    const srcArgs = ['data', 'terminalPredicate', ...argNames]
+    return new Function(
+      ...srcArgs,
+      `
+${this.#arrayLike ? emitArrayLoop(lines, TERMINAL_EVERY) : emitIterableLoop(lines, TERMINAL_EVERY)}
+return true
+      `
+    )(this.#source, predicate, ...argValues)
   }
 
   /**
    * Terminal: returns the first element satisfying the predicate, or undefined.
    */
   find(predicate: (value: T, index: number) => boolean): T | undefined {
-    const run = compileFind(this.#arrayLike, this.#ops, predicate as FilterFn)
-    return run(this.#source) as T | undefined
+    const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
+    const srcArgs = ['data', 'terminalPredicate', ...argNames]
+    return new Function(
+      ...srcArgs,
+      `
+${this.#arrayLike ? emitArrayLoop(lines, TERMINAL_FIND) : emitIterableLoop(lines, TERMINAL_FIND)}
+return undefined
+      `
+    )(this.#source, predicate, ...argValues)
   }
 
   /**

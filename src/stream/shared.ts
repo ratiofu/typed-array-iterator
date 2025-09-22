@@ -1,4 +1,4 @@
-import type { BuiltOps, FilterFn, MapFn, Op } from '../types'
+import type { BuiltOps, FilterFn, MapFn, Op } from './types'
 
 /**
  * Lower-level helper used by all compile* terminals to prepare the fused pipeline.
@@ -46,11 +46,9 @@ export function buildOpsUnrolled(ops: readonly Op[]): BuiltOps {
 export function emitArrayLoop(lines: readonly string[], terminal: string): string {
   return `
 const dataLength = data.length
-let logicalIndex = 0
 let emittedIndex = 0
-for (let i = 0; i < dataLength; i++) {
-  let currentValue = data[i]
-  const index = logicalIndex++
+for (let index = 0; index < dataLength; index++) {
+  let currentValue = data[index]
 ${lines.join('\n')}
 ${terminal}
 }`
@@ -69,4 +67,10 @@ for (const currentValueRaw of data) {
 ${lines.join('\n')}
 ${terminal}
 }`
+}
+
+const emptyArraySingleton: readonly unknown[] = Object.freeze([])
+
+export function emptyArray<T>(): readonly T[] {
+  return emptyArraySingleton as readonly T[]
 }
