@@ -74,6 +74,49 @@ function setupBenchmarks(data: readonly FixtureModel[]) {
       }
     })
   })
+
+  // Text filtering comparison: stream.filterText vs arrays vs manual loop
+  {
+    const query = 'gmail com'
+
+    const escapeRegexLiteral = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+    barplot(() => {
+      bench('text filter: custom stream.filterText (end-to-end)', () => {
+        nameCount = 0
+        // Compile per-iteration to measure end-to-end cost
+        const filtered = stream(data).filterText(query, 'name', 'emailAddress')
+        // biome-ignore lint/complexity/noForEach: for-each is the only way to get the data
+        filtered.forEach((u) => {
+          countNames(u.name)
+        })
+      })
+
+      bench('text filter: arrays filter->forEach (end-to-end)', () => {
+        nameCount = 0
+        // Rebuild tokens/regexes and predicate per-iteration to measure end-to-end cost
+        const tokens2 = query.split(/\s+/).filter((t) => t.length > 0)
+        const regexes2 = tokens2.map(
+          (t) => new RegExp((t.length < 4 ? '^' : '') + escapeRegexLiteral(t), 'i')
+        )
+        // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: end-to-end bench predicate
+        const arraysPredicate2 = (u: FixtureModel) => {
+          const v1u = u.name
+          const v2u = u.emailAddress
+          const v1 = typeof v1u === 'string' ? v1u : ''
+          const v2 = typeof v2u === 'string' ? v2u : ''
+          for (const re of regexes2) {
+            if (!(re.test(v1) || re.test(v2))) return false
+          }
+          return true
+        }
+        // biome-ignore lint/complexity/noForEach: comparing to stream.forEach
+        data.filter(arraysPredicate2).forEach((u) => {
+          countNames(u.name)
+        })
+      })
+    })
+  }
 }
 
 export async function runBenchmarks(recordCount = 20000) {

@@ -39,6 +39,51 @@ describe('Stream', () => {
     expect(sum).toBe(18)
   })
 
+  describe('filterText', () => {
+    type TestUser = { id: number; name: string; emailAddress: string | null }
+    const users: readonly TestUser[] = [
+      { id: 1, name: 'Alice Exampleton', emailAddress: 'alice@example.com' },
+      { id: 2, name: 'Bob Marley', emailAddress: 'bob@reggae.org' },
+      { id: 3, name: 'Charles', emailAddress: null },
+      { id: 4, name: 'Malice', emailAddress: 'evil@domain.com' },
+    ]
+
+    test('rejects when no token longer than 2 characters', () => {
+      const out = stream(users).filterText('a an of', 'name', 'emailAddress').toArray()
+      expect(out).toEqual([])
+    })
+
+    test('starts-with for tokens of length 2 or 3 (case-insensitive)', () => {
+      // "ali" (3) should match Alice by starts-with in name; not Malice (contains only)
+      const out = stream(users).filterText('ali', 'name').toArray()
+      expect(out.map((u) => u.name)).toEqual(['Alice Exampleton'])
+    })
+
+    test('contains for tokens length >= 4 (case-insensitive)', () => {
+      // "alic" (4) should match both Alice and Malice (contains)
+      const out = stream(users).filterText('alic', 'name').toArray()
+      expect(out.map((u) => u.name)).toEqual(['Alice Exampleton', 'Malice'])
+    })
+
+    test('tokens can all be satisfied by a single field', () => {
+      // With starts-with ("^") for short tokens, use one anchored and one contains token in the same field
+      const out = stream(users).filterText('ali exam', 'name', 'emailAddress').toArray()
+      expect(out.map((u) => u.id)).toEqual([1])
+    })
+
+    test('multiple tokens: tokens can be matched across different fields', () => {
+      // With starts-with ("^") for short tokens, choose tokens that start at different fields
+      const out = stream(users).filterText('mal evi', 'name', 'emailAddress').toArray()
+      // "mal" matches start of name "Malice"; "evi" matches start of email "evil@domain.com"
+      expect(out.map((u) => u.id)).toEqual([4])
+    })
+
+    test('rejects when no fields are provided', () => {
+      const out = stream(users).filterText('alice').toArray()
+      expect(out).toEqual([])
+    })
+  })
+
   test('generic iterable: terminals can early-exit and trigger iterator.return()', () => {
     let closed = false
     const iterable: Iterable<number> = {

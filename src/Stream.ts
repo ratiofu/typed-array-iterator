@@ -1,6 +1,9 @@
 import { isArrayLike } from './stream/isArrayLike'
 import { buildOpsUnrolled, emitArrayLoop, emitIterableLoop, emptyArray } from './stream/shared'
-import type { FilterFn, FilterOp, MapFn, MapOp, Op } from './stream/types'
+import type { FieldsParam, FilterFn, FilterOp, MapFn, MapOp, Op } from './stream/types'
+
+// Private: valid JS identifier for dot-notation property access
+const IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/
 
 // Terminal snippets, with index call supported for operations
 const TERMINAL_TO_ARRAY = 'result[emittedIndex++] = currentValue'
@@ -97,6 +100,78 @@ export class Stream<T> {
   drop(n: number): Stream<T> {
     let remaining = n
     return this.filter(() => remaining-- <= 0)
+  }
+
+  /**
+   * Specialized text filter over one or more string fields.
+   * - Splits `query` on whitespace; removes empty tokens.
+   * - If no token has length > 2, the filter rejects all values.
+   * - Builds case-insensitive regexes per token:
+   *   - token.length < 4 => word-start match ("\\btoken")
+   *   - token.length >= 4 => contains match ("token")
+   * - Matching rule: each token must match at least one of the provided fields; tokens may match across different fields.
+   * - Typing: when T has a string index signature (string extends keyof T), `fields` falls back to `string[]`.
+   */
+  filterText(query: string, ...fields: FieldsParam<T>): Stream<T> {
+    const tokens = query.split(/\s+/).filter((t) => t.length > 0)
+    if (fields.length === 0) {
+      // No fields to search -> reject all
+      return this.filter(() => false)
+    }
+    if (!tokens.some((t) => t.length > 2)) {
+      // No token long enough -> reject all per spec
+      return this.filter(() => false)
+    }
+    // Sort tokens by length (desc) to increase selectivity (in-place sort to avoid extra allocation)
+    tokens.sort((a, b) => b.length - a.length)
+    const regexes = tokens.map((t) => new RegExp((t.length < 4 ? '^' : '') + escapeRegExp(t), 'i'))
+
+    // Build field accessors using dot notation when safe, otherwise bracket notation
+    const fieldVarNames = fields.map((_f, i) => `v${i + 1}`)
+    const fieldAccessors = fields.map((f) => {
+      const key = String(f)
+      return IDENTIFIER_RE.test(key) ? `value.${key}` : `value[${JSON.stringify(key)}]`
+    })
+
+    // Build body using an array of lines and join at the end to minimize intermediate strings
+    const lines: string[] = []
+    for (let i = 0; i < fieldVarNames.length; i++) {
+      const v = fieldVarNames[i]
+      const acc = fieldAccessors[i]
+      lines.push(`let ${v} = ${acc}`)
+      lines.push(`if (typeof ${v} !== 'string') { ${v} = '' }`)
+    }
+
+    if (regexes.length === 1) {
+      // Linear structure for single token
+      const r0 = 'rs[0]'
+      for (const v of fieldVarNames) {
+        lines.push(`if (${r0}.test(${v})) { return true }`)
+      }
+      lines.push('return false')
+    } else if (regexes.length === 2) {
+      // First token must match any field
+      lines.push(
+        `if (!(${fieldVarNames.map((v) => `rs[0].test(${v})`).join(' || ')})) { return false }`
+      )
+      // Second token must match any field
+      lines.push(
+        `if (!(${fieldVarNames.map((v) => `rs[1].test(${v})`).join(' || ')})) { return false }`
+      )
+      lines.push('return true')
+    } else {
+      // General case: each token must match at least one field
+      for (let i = 0; i < regexes.length; i++) {
+        lines.push(
+          `if (!(${fieldVarNames.map((v) => `rs[${i}].test(${v})`).join(' || ')})) { return false }`
+        )
+      }
+      lines.push('return true')
+    }
+
+    const body = lines.join('\n')
+    const compiled = new Function('value', 'rs', body)
+    return this.filter((value) => compiled(value, regexes))
   }
 
   /**
@@ -250,4 +325,9 @@ return undefined
  */
 export function stream<T>(source: Iterable<T>): Stream<T> {
   return new Stream<T>(source)
+}
+
+function escapeRegExp(s: string): string {
+  // Escape special regex characters to perform literal matches
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
