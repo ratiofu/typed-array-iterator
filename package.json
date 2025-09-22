@@ -9,8 +9,8 @@
     "typecheck": "tsc --noEmit",
     "quality": "bun typecheck && bun check && bun run test",
     "quality:all": "time (bun quality && bun generate-fixtures 1 && bun src/index.ts)",
-    "bench": "bun --expose-gc bench/index.ts 100000",
-    "bench:large": "bun --expose-gc bench/index.ts 500000",
+    "bench": "bun --expose-gc bench/bench.ts 100000",
+    "bench:large": "bun --expose-gc bench/bench.ts 500000",
     "bench:deep": "./bench/compare-bun-node-perf.sh"
   },
   "devDependencies": {

@@ -1,9 +1,15 @@
 import type { BuiltOps, FilterFn, MapFn, Op } from '../types'
 
 /**
- * Build unrolled ops lines and gather function argument names/values in one pass.
- * - Derives stable, readable argument names from the provided function names (sanitized)
- * - Ensures uniqueness across all generated parameter names
+ * Lower-level helper used by all compile* terminals to prepare the fused pipeline.
+ *
+ * Responsibilities:
+ * - Walk the ops array once and build:
+ *   - `lines`: JS source lines that implement map/filter fusion in the hot loop
+ *   - `argNames`: parameter names for each unique user function
+ *   - `argValues`: the actual function references passed to `new Function`
+ * - Keeps types explicit (no `any`); accepts/returns unknown-based function types.
+ * - Intentionally simple naming (mapN/filterN) to keep generated code readable.
  */
 export function buildOpsUnrolled(ops: readonly Op[]): BuiltOps {
   const mapFns: MapFn[] = []

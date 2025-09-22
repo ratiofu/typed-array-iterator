@@ -97,8 +97,8 @@ if (import.meta.main) {
 
   if (Number.isNaN(recordCount) || recordCount <= 0) {
     console.error('Error: Record count must be a positive integer')
-    console.error('Usage: bun src/benchmark/index.ts [recordCount]')
-    console.error('Example: bun src/benchmark/index.ts 5000')
+    console.error('Usage: bun bench/bench.ts [recordCount]')
+    console.error('Example: bun bench/bench.ts 5000')
     process.exit(1)
   }
 

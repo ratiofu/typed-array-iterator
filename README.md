@@ -98,12 +98,12 @@ Run comprehensive performance benchmarks comparing different iteration and filte
 
 ```bash
 # Run benchmarks with default dataset (20,000 records)
-bun run benchmark:small
-bun run benchmark:medium
-bun run benchmark:large
+bun run bench
+bun run bench:large # runs with 500,000 records
+bun run bench:deep # runs a deep comparison of Bun vs Node performance, using performance counters, with 200,000 records
 
 # Run benchmarks with custom record count
-bun --expose-gc src/benchmark/index.ts 50000
+bun --expose-gc ben/bench.ts 50000
 ```
 
 The benchmark compares various iteration and filtering methods between the traditional

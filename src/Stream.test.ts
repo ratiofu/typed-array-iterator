@@ -104,4 +104,31 @@ describe('Stream', () => {
     const out = s.toArray()
     expect(out).toEqual([2, 3, 4, 5, 6].map((x) => x + 9))
   })
+
+  test('drop(n) skips first n elements', () => {
+    const out = stream([1, 2, 3, 4] as const)
+      .drop(2)
+      .toArray()
+    expect(out).toEqual([3, 4])
+  })
+
+  test('take(n) keeps first n elements', () => {
+    const out = stream([1, 2, 3] as const)
+      .take(2)
+      .toArray()
+    expect(out).toEqual([1, 2])
+  })
+
+  test('forEach calls sink with emitted index after ops', () => {
+    const seen: [number, number][] = []
+    stream([1, 2] as const)
+      .map((x) => x * 2)
+      .forEach((v, i) => {
+        seen.push([v, i])
+      })
+    expect(seen).toEqual([
+      [2, 0],
+      [4, 1],
+    ])
+  })
 })

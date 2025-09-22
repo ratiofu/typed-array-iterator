@@ -1,6 +1,14 @@
 import type { Op } from '../types'
 import { buildOpsUnrolled } from './shared'
 
+/**
+ * Compile a specialized `toArray` terminal that materializes results.
+ *
+ * Relationship to overall compilation:
+ * - Uses buildOpsUnrolled() to inline the fused map/filter pipeline before pushing results.
+ * - Picks loop form based on isArrayLikeSource (indexed vs for..of).
+ * - Returns a zero-alloc inner loop aside from the output array.
+ */
 export function compileToArray(
   isArrayLikeSource: boolean,
   ops: readonly Op[]
@@ -9,21 +17,20 @@ export function compileToArray(
 
   if (isArrayLikeSource) {
     const srcArgs = ['data', ...argNames]
-    const body = [
-      'const result = []',
-      'const dataLength = data.length',
-      'let logicalIndex = 0',
-      'let emittedIndex = 0',
-      'for (let i = 0; i < dataLength; i++) {',
-      '  let currentValue = data[i]',
-      '  const index = logicalIndex++',
-      ...lines.map((l) => `  ${l}`),
-      '  result.push(currentValue)',
-      '  emittedIndex++',
-      '}',
-      'return result',
-    ].join('\n')
-    // eslint-disable-next-line no-new-func
+    const body = `
+const result = []
+const dataLength = data.length
+let logicalIndex = 0
+let emittedIndex = 0
+for (let i = 0; i < dataLength; i++) {
+  let currentValue = data[i]
+  const index = logicalIndex++
+  ${lines.map((l) => `  ${l}`).join('\n')}
+  result.push(currentValue)
+  emittedIndex++
+}
+return result
+    `
     const fn = new Function(...srcArgs, body) as (
       data: ArrayLike<unknown>,
       ...fns: Function[]
@@ -32,20 +39,19 @@ export function compileToArray(
   }
 
   const srcArgs = ['iterable', ...argNames]
-  const body = [
-    'const result = []',
-    'let logicalIndex = 0',
-    'let emittedIndex = 0',
-    'for (const currentValueRaw of iterable) {',
-    '  let currentValue = currentValueRaw',
-    '  const index = logicalIndex++',
-    ...lines.map((l) => `  ${l}`),
-    '  result.push(currentValue)',
-    '  emittedIndex++',
-    '}',
-    'return result',
-  ].join('\n')
-  // eslint-disable-next-line no-new-func
+  const body = `
+const result = []
+let logicalIndex = 0
+let emittedIndex = 0
+for (const currentValueRaw of iterable) {
+  let currentValue = currentValueRaw
+  const index = logicalIndex++
+${lines.map((l) => `  ${l}`).join('\n')}
+  result.push(currentValue)
+  emittedIndex++
+}
+return result
+  `
   const fn = new Function(...srcArgs, body) as (
     iterable: Iterable<unknown>,
     ...fns: Function[]

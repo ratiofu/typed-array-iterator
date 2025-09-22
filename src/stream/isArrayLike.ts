@@ -1,3 +1,16 @@
+/**
+ * Detects whether a value is "array-like" for the purposes of Stream compilation.
+ *
+ * Rules:
+ * - Arrays and TypedArray views (except DataView) are treated as array-like (fast indexed loop).
+ * - Strings are array-like (indexable, length-bearing).
+ * - Generic objects are array-like if they have a finite, non-negative `length` and
+ *   either `length === 0` or index 0 exists. This mirrors common JS array-like checks.
+ *
+ * This is used once per Stream instance to pick the array-indexed path vs. the generic
+ * iterable path in compiled terminals.
+ */
+
 export function isArrayLike(candidate: unknown): candidate is ArrayLike<unknown> {
   // Fast paths: Array, TypedArrays (but not DataView)
   if (Array.isArray(candidate)) return true
