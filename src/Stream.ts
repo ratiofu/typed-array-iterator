@@ -120,9 +120,9 @@ return result
    */
   forEach(fn: (value: T, index: number) => void): void {
     const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
-    const srcArgs = ['data', 'sink', ...argNames]
+    argNames.unshift('data', 'sink')
     new Function(
-      ...srcArgs,
+      ...argNames,
       this.#arrayLike
         ? emitArrayLoop(lines, TERMINAL_FOR_EACH)
         : emitIterableLoop(lines, TERMINAL_FOR_EACH)
@@ -135,15 +135,16 @@ return result
    */
   reduce<U = T>(reducer: (previous: U, current: T, index: number) => U, initialValue?: U): U {
     const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
-    const srcArgs = ['data', 'reducer', 'hasInitial', 'initialValue', ...argNames]
+    argNames.unshift('data', 'reducer', 'hasInitial', 'initialValue')
     return new Function(
-      ...srcArgs,
+      ...argNames,
       `
 let started = hasInitial
 let accumulator = initialValue
 ${this.#arrayLike ? emitArrayLoop(lines, TERMINAL_REDUCE) : emitIterableLoop(lines, TERMINAL_REDUCE)}
 if (!started) { throw new TypeError("Reduce of empty stream with no initial value") }
-return accumulator`
+return accumulator
+`
     )(this.#source, reducer, initialValue !== undefined, initialValue, ...argValues) as U
   }
 
@@ -152,9 +153,9 @@ return accumulator`
    */
   some(predicate: (value: T, index: number) => boolean): boolean {
     const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
-    const srcArgs = ['data', 'terminalPredicate', ...argNames]
+    argNames.unshift('data', 'terminalPredicate')
     return new Function(
-      ...srcArgs,
+      ...argNames,
       `
 ${this.#arrayLike ? emitArrayLoop(lines, TERMINAL_SOME) : emitIterableLoop(lines, TERMINAL_SOME)}
 return false
@@ -167,9 +168,9 @@ return false
    */
   every(predicate: (value: T, index: number) => boolean): boolean {
     const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
-    const srcArgs = ['data', 'terminalPredicate', ...argNames]
+    argNames.unshift('data', 'terminalPredicate')
     return new Function(
-      ...srcArgs,
+      ...argNames,
       `
 ${this.#arrayLike ? emitArrayLoop(lines, TERMINAL_EVERY) : emitIterableLoop(lines, TERMINAL_EVERY)}
 return true
@@ -182,9 +183,9 @@ return true
    */
   find(predicate: (value: T, index: number) => boolean): T | undefined {
     const { argNames, argValues, lines } = buildOpsUnrolled(this.#ops)
-    const srcArgs = ['data', 'terminalPredicate', ...argNames]
+    argNames.unshift('data', 'terminalPredicate')
     return new Function(
-      ...srcArgs,
+      ...argNames,
       `
 ${this.#arrayLike ? emitArrayLoop(lines, TERMINAL_FIND) : emitIterableLoop(lines, TERMINAL_FIND)}
 return undefined
