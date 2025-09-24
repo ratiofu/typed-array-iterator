@@ -47,10 +47,10 @@ export function App() {
         />
         <h2>Search Results</h2>
         <div className="row">
-          <ResultsColumn title="Stream (compiled)" durationMs={search.stream.durationMs}>
+          <ResultsColumn title="Stream (compiled)" {...search.stream}>
             {search.stream.listComponent}
           </ResultsColumn>
-          <ResultsColumn title="Manual (arrays)" durationMs={search.manual.durationMs}>
+          <ResultsColumn title="Manual (arrays)" {...search.manual}>
             {search.manual.listComponent}
           </ResultsColumn>
         </div>

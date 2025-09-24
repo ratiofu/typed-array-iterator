@@ -1,4 +1,4 @@
-- [ ] 0. Refactor `useSearch` so that the stream work is complete before the item is rendered  
+- [x] 0. Refactor `useSearch` so that the stream work is complete before the item is rendered  
 - [ ] 1. Provide a "debug" option for any of the terminals to emit the resulting source code 
 - [ ] 2. Remove count/length and provide an `estimateSize` option that samples the source if filters exist 
 - [ ] 3. Revisit the benchmark implementation to be more real-world focused and investigate performance regressions

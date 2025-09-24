@@ -1,19 +1,14 @@
 import type { ReactNode } from 'react'
 import type { FixtureModel } from '../fixtures/FixtureModel'
-import type { Stream } from '../Stream'
 
 type ItemsProps = Readonly<{
-  items: readonly FixtureModel[] | Stream<FixtureModel>
+  shownItems: readonly FixtureModel[]
   tokens: readonly string[]
 }>
 
-export function ResultList({ items, tokens }: ItemsProps) {
-  const totalItems = items.length
-  const shownItems = items.slice(0, 500)
-  const shownItemsCount = shownItems.length
-  const more = Math.max(0, totalItems - shownItemsCount)
+export function ResultList({ shownItems, tokens }: ItemsProps) {
   return (
-    <div className="card-body">
+    <div className="card-body card-content">
       <ul className="list">
         {shownItems.map((u) => (
           <li key={u.id}>
@@ -24,7 +19,6 @@ export function ResultList({ items, tokens }: ItemsProps) {
           </li>
         ))}
       </ul>
-      <div className="more">{more > 0 ? `${more.toLocaleString()} more results` : '\u00a0'} </div>
     </div>
   )
 }
