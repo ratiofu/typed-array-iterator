@@ -1,15 +1,21 @@
 export type MapFn<I = unknown, O = unknown> = (value: I, index: number) => O
 export type FilterFn<I = unknown> = (value: I, index: number) => boolean
+export type OpFn<I = unknown, O = unknown> = MapFn<I, O> | FilterFn<I>
 
-export type MapOp = { kind: 'map'; fn: MapFn }
+export type MapOp = { kind: 'transform'; fn: MapFn }
 export type FilterOp = { kind: 'filter'; fn: FilterFn }
-export type Op = MapOp | FilterOp
+export type RangeOp = { kind: 'range'; start: number; end?: number }
+export type Op = MapOp | FilterOp | RangeOp
 
 export type BuiltOps = {
-  argNames: string[]
-  argValues: ReadonlyArray<MapFn | FilterFn>
-  lines: string[]
-  opsNeedIndex: boolean
+  readonly argNames: string[]
+  readonly argValues: readonly OpFn[]
+  readonly lines: readonly string[]
+  readonly opsNeedIndex: boolean
+  readonly hasFilter: boolean
+  readonly noResults: boolean
+  readonly skipInitial: number
+  readonly maxEmits: number | null
 }
 
 // Exclude index signatures from keyof T so we only consider known, declared property keys

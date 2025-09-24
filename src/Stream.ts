@@ -1,25 +1,32 @@
+import { buildRegExps } from './lib/buildRegExps'
+import { emptyArray } from './lib/emptyArray'
+import { notSpecificEnough } from './lib/notSpecificEnough'
+import { tokenize } from './lib/tokenize'
+import { buildOpsUnrolled, emitArrayLoop, emitIterableLoop, hasNoMatchOps } from './stream/compiler'
 import { isArrayLike } from './stream/isArrayLike'
-import { buildOpsUnrolled, emitArrayLoop, emitIterableLoop, emptyArray } from './stream/shared'
+import { noMatch } from './stream/noMatch'
 import type { FieldsParam, FilterFn, FilterOp, MapFn, MapOp, Op } from './stream/types'
 
 // Private: valid JS identifier for dot-notation property access
 const IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/
 
 // Terminal snippets, with index call supported for operations
-const TERMINAL_TO_ARRAY = 'result[emittedIndex++] = currentValue'
-const TERMINAL_FOR_EACH = 'sink(currentValue, emittedIndex++)'
-const TERMINAL_SOME = 'if (terminalPredicate(currentValue, emittedIndex++)) { return true }'
-const TERMINAL_EVERY = 'if (!terminalPredicate(currentValue, emittedIndex++)) { return false }'
-const TERMINAL_FIND = 'if (terminalPredicate(currentValue, emittedIndex++)) { return currentValue }'
+const TERMINAL_TO_ARRAY = '  result[emittedIndex++] = currentValue'
+const TERMINAL_FOR_EACH = '  sink(currentValue, emittedIndex++)'
+const TERMINAL_SOME = '  if (terminalPredicate(currentValue, emittedIndex++)) { return true }'
+const TERMINAL_EVERY = '  if (!terminalPredicate(currentValue, emittedIndex++)) { return false }'
+const TERMINAL_FIND =
+  '  if (terminalPredicate(currentValue, emittedIndex++)) { return currentValue }'
 const TERMINAL_REDUCE = `
-if (started) {
-  accumulator = reducer(accumulator, currentValue, emittedIndex++)
-} else {
-  accumulator = currentValue
-  started = true
-  emittedIndex++
-}
+  if (started) {
+    accumulator = reducer(accumulator, currentValue, emittedIndex++)
+  } else {
+    accumulator = currentValue
+    started = true
+    emittedIndex++
+  }
 `
+const TERMINAL_COUNT = '  emittedIndex++'
 
 // Terminal snippets, without index support
 const TERMINAL_FOR_EACH_NO_INDEX = 'sink(currentValue)'
@@ -29,9 +36,11 @@ const TERMINAL_FIND_NO_INDEX = 'if (terminalPredicate(currentValue)) { return cu
 const TERMINAL_REDUCE_NO_INDEX = `
 if (started) {
   accumulator = reducer(accumulator, currentValue)
+  emittedIndex++
 } else {
   accumulator = currentValue
   started = true
+  emittedIndex++
 }
 `
 
@@ -64,16 +73,24 @@ export class Stream<T> {
     return arrayLike
   }
 
+  get length(): number {
+    return hasNoMatchOps(this.#ops) ? 0 : this.count()
+  }
+
   /**
    * Transform each element with `fn`.
    * - Lazy and single-use: returns a new Stream with the op appended.
    * @param fn mapping function `(value, index) => nextValue`
    * @returns a new Stream of U
    */
-  map<U>(fn: (value: T, index: number) => U): Stream<U> {
-    const op: MapOp = { kind: 'map', fn: fn as MapFn }
+  transform<U>(fn: (value: T, index: number) => U): Stream<U> {
+    const op: MapOp = { kind: 'transform', fn: fn as MapFn }
     // this type hack is necessary and intentional ↓
     return new Stream<U>(this.#source as Iterable<U>, [...this.#ops, op])
+  }
+
+  map<U>(fn: (value: T, index: number) => U): U[] {
+    return this.transform(fn).toArray()
   }
 
   /**
@@ -93,38 +110,48 @@ export class Stream<T> {
     return new Stream<S | T>(this.#source, [...this.#ops, op])
   }
 
+  range(start: number, end?: number): Stream<T> {
+    const op = { kind: 'range', start, end } as Op
+    return new Stream<T>(this.#source, [...this.#ops, op])
+  }
+
+  slice(start: number, end?: number): T[] {
+    if (start >= 0 && (end === undefined || end >= 0)) {
+      return this.range(start, end).toArray()
+    }
+    return this.toArray().slice(start, end)
+  }
+
   /**
-   * Skip the first `n` elements.
-   * Implemented as a filter without early-stop semantics.
+   * Limiters: implemented as range ops to enable early-stop semantics in terminals.
    */
   drop(n: number): Stream<T> {
-    let remaining = n
-    return this.filter(() => remaining-- <= 0)
+    return this.range(n)
   }
 
   /**
    * Specialized text filter over one or more string fields.
    * - Splits `query` on whitespace; removes empty tokens.
-   * - If no token has length > 2, the filter rejects all values.
+   * - If no token has length > 1, the filter rejects all values.
    * - Builds case-insensitive regexes per token:
-   *   - token.length < 4 => word-start match ("\\btoken")
+   *   - token.length < 4 => field start match ("^token")
    *   - token.length >= 4 => contains match ("token")
    * - Matching rule: each token must match at least one of the provided fields; tokens may match across different fields.
    * - Typing: when T has a string index signature (string extends keyof T), `fields` falls back to `string[]`.
    */
   filterText(query: string, ...fields: FieldsParam<T>): Stream<T> {
-    const tokens = query.split(/\s+/).filter((t) => t.length > 0)
+    const tokens = tokenize(query)
     if (fields.length === 0) {
       // No fields to search -> reject all
-      return this.filter(() => false)
+      return this.filter(noMatch)
     }
-    if (!tokens.some((t) => t.length > 2)) {
+    if (notSpecificEnough(tokens)) {
       // No token long enough -> reject all per spec
-      return this.filter(() => false)
+      return this.filter(noMatch)
     }
     // Sort tokens by length (desc) to increase selectivity (in-place sort to avoid extra allocation)
     tokens.sort((a, b) => b.length - a.length)
-    const regexes = tokens.map((t) => new RegExp((t.length < 4 ? '^' : '') + escapeRegExp(t), 'i'))
+    const regexes = buildRegExps(tokens)
 
     // Build field accessors using dot notation when safe, otherwise bracket notation
     const fieldVarNames = fields.map((_f, i) => `v${i + 1}`)
@@ -138,27 +165,18 @@ export class Stream<T> {
     for (let i = 0; i < fieldVarNames.length; i++) {
       const v = fieldVarNames[i]
       const acc = fieldAccessors[i]
-      lines.push(`let ${v} = ${acc}`)
-      lines.push(`if (typeof ${v} !== 'string') { ${v} = '' }`)
+      lines.push(`const ${v}u = ${acc}`)
+      lines.push(`const ${v} = typeof ${v}u === 'string' ? ${v}u : ''`)
     }
 
     if (regexes.length === 1) {
+      lines.push('const r = rs[0]')
       // Linear structure for single token
-      const r0 = 'rs[0]'
-      for (const v of fieldVarNames) {
-        lines.push(`if (${r0}.test(${v})) { return true }`)
+      const fieldCount = fieldVarNames.length
+      for (let j = 0; j < fieldCount; j++) {
+        lines.push(`if (r.test(${fieldVarNames[j]})) return true`)
       }
       lines.push('return false')
-    } else if (regexes.length === 2) {
-      // First token must match any field
-      lines.push(
-        `if (!(${fieldVarNames.map((v) => `rs[0].test(${v})`).join(' || ')})) { return false }`
-      )
-      // Second token must match any field
-      lines.push(
-        `if (!(${fieldVarNames.map((v) => `rs[1].test(${v})`).join(' || ')})) { return false }`
-      )
-      lines.push('return true')
     } else {
       // General case: each token must match at least one field
       for (let i = 0; i < regexes.length; i++) {
@@ -168,19 +186,17 @@ export class Stream<T> {
       }
       lines.push('return true')
     }
-
-    const body = lines.join('\n')
-    const compiled = new Function('value', 'rs', body)
+    const source = lines.join('\n')
+    // console.log(source)
+    const compiled = new Function('value', 'rs', source)
     return this.filter((value) => compiled(value, regexes))
   }
 
   /**
    * Keep only the first `n` elements.
-   * Implemented as a filter without early-stop semantics.
    */
   take(n: number): Stream<T> {
-    let remaining = n
-    return this.filter(() => remaining-- > 0)
+    return this.range(0, n)
   }
 
   // ---- Terminals ----
@@ -190,24 +206,48 @@ export class Stream<T> {
    * Compiles and runs a specialized toArray for this stream.
    */
   toArray(): T[] {
-    const { argNames, argValues, lines, opsNeedIndex } = buildOpsUnrolled(this.#ops)
-    const hasFilter = this.#ops.some((op) => op.kind === 'filter')
-    argNames.unshift('data')
+    const {
+      argNames,
+      argValues,
+      lines,
+      opsNeedIndex,
+      hasFilter,
+      noResults,
+      skipInitial,
+      maxEmits,
+    } = buildOpsUnrolled(this.#ops)
+    if (noResults) {
+      return []
+    }
+    argNames.unshift('data', 'SKIP', 'MAX')
     return new Function(
       ...argNames,
       `
 ${
   this.#arrayLike
-    ? hasFilter
-      ? 'const result = new Array(data.length >>> 1)'
-      : 'const result = new Array(data.length)'
+    ? `const result = new Array((MAX >= 0 ? Math.max(0, Math.min(MAX, (data.length - SKIP) >>> 0)) : ${hasFilter ? '(data.length >>> 1)' : 'data.length'}))`
     : 'const result = []'
 }
-${this.#arrayLike ? emitArrayLoop(lines, TERMINAL_TO_ARRAY) : emitIterableLoop(lines, TERMINAL_TO_ARRAY, opsNeedIndex)}
+${
+  this.#arrayLike
+    ? emitArrayLoop(
+        lines,
+        TERMINAL_TO_ARRAY,
+        skipInitial > 0,
+        'if (MAX >= 0 && emittedIndex >= MAX) { break }'
+      )
+    : emitIterableLoop(
+        lines,
+        TERMINAL_TO_ARRAY,
+        opsNeedIndex,
+        skipInitial > 0,
+        'if (MAX >= 0 && emittedIndex >= MAX) { break }'
+      )
+}
 result.length = emittedIndex
 return result
       `
-    )(this.#source, ...argValues)
+    )(this.#source, skipInitial, maxEmits ?? -1, ...argValues)
   }
 
   /**
@@ -215,15 +255,30 @@ return result
    * Executes a compiled forEach with the provided sink.
    */
   forEach(fn: (value: T, index: number) => void): void {
-    const { argNames, argValues, lines, opsNeedIndex } = buildOpsUnrolled(this.#ops)
+    const { argNames, argValues, lines, opsNeedIndex, noResults, skipInitial, maxEmits } =
+      buildOpsUnrolled(this.#ops)
+    if (noResults) {
+      return
+    }
     const terminal = fn.length >= 2 ? TERMINAL_FOR_EACH : TERMINAL_FOR_EACH_NO_INDEX
-    argNames.unshift('data', 'sink')
+    argNames.unshift('data', 'sink', 'SKIP', 'MAX')
     new Function(
       ...argNames,
       this.#arrayLike
-        ? emitArrayLoop(lines, terminal)
-        : emitIterableLoop(lines, terminal, opsNeedIndex || fn.length >= 2)
-    )(this.#source, fn, ...argValues)
+        ? emitArrayLoop(
+            lines,
+            terminal,
+            skipInitial > 0,
+            'if (MAX >= 0 && emittedIndex >= MAX) { return }'
+          )
+        : emitIterableLoop(
+            lines,
+            terminal,
+            opsNeedIndex || fn.length >= 2,
+            skipInitial > 0,
+            'if (MAX >= 0 && emittedIndex >= MAX) { return }'
+          )
+    )(this.#source, fn, skipInitial, maxEmits ?? -1, ...argValues)
   }
 
   /**
@@ -231,9 +286,13 @@ return result
    * If `initialValue` is omitted, the first emitted element is used as the seed.
    */
   reduce<U = T>(reducer: (previous: U, current: T, index: number) => U, initialValue?: U): U {
-    const { argNames, argValues, lines, opsNeedIndex } = buildOpsUnrolled(this.#ops)
+    const { argNames, argValues, lines, opsNeedIndex, noResults, skipInitial, maxEmits } =
+      buildOpsUnrolled(this.#ops)
+    if (noResults) {
+      throw new TypeError('Reduce of empty stream with no initial value')
+    }
     const terminal = reducer.length >= 3 ? TERMINAL_REDUCE : TERMINAL_REDUCE_NO_INDEX
-    argNames.unshift('data', 'reducer', 'hasInitial', 'initialValue')
+    argNames.unshift('data', 'reducer', 'hasInitial', 'initialValue', 'SKIP', 'MAX')
     return new Function(
       ...argNames,
       `
@@ -241,73 +300,169 @@ let started = hasInitial
 let accumulator = initialValue
 ${
   this.#arrayLike
-    ? emitArrayLoop(lines, terminal)
-    : emitIterableLoop(lines, terminal, opsNeedIndex || reducer.length >= 3)
+    ? emitArrayLoop(
+        lines,
+        terminal,
+        skipInitial > 0,
+        'if (MAX >= 0 && emittedIndex >= MAX) { if (!started) { throw new TypeError("Reduce of empty stream with no initial value") } return accumulator }'
+      )
+    : emitIterableLoop(
+        lines,
+        terminal,
+        opsNeedIndex || reducer.length >= 3,
+        skipInitial > 0,
+        'if (MAX >= 0 && emittedIndex >= MAX) { if (!started) { throw new TypeError("Reduce of empty stream with no initial value") } return accumulator }'
+      )
 }
 if (!started) { throw new TypeError("Reduce of empty stream with no initial value") }
 return accumulator
 `
-    )(this.#source, reducer, initialValue !== undefined, initialValue, ...argValues) as U
+    )(
+      this.#source,
+      reducer,
+      initialValue !== undefined,
+      initialValue,
+      skipInitial,
+      maxEmits ?? -1,
+      ...argValues
+    ) as U
   }
 
   /**
    * Terminal: returns true if any element satisfies the predicate.
    */
   some(predicate: (value: T, index: number) => boolean): boolean {
-    const { argNames, argValues, lines, opsNeedIndex } = buildOpsUnrolled(this.#ops)
+    const { argNames, argValues, lines, opsNeedIndex, noResults, skipInitial, maxEmits } =
+      buildOpsUnrolled(this.#ops)
+    if (noResults) {
+      return false
+    }
     const terminal = predicate.length >= 2 ? TERMINAL_SOME : TERMINAL_SOME_NO_INDEX
-    argNames.unshift('data', 'terminalPredicate')
+    argNames.unshift('data', 'terminalPredicate', 'SKIP', 'MAX')
     return new Function(
       ...argNames,
       `
 ${
   this.#arrayLike
-    ? emitArrayLoop(lines, terminal)
-    : emitIterableLoop(lines, terminal, opsNeedIndex || predicate.length >= 2)
+    ? emitArrayLoop(
+        lines,
+        terminal,
+        skipInitial > 0,
+        'if (MAX >= 0 && emittedIndex >= MAX) { return false }'
+      )
+    : emitIterableLoop(
+        lines,
+        terminal,
+        opsNeedIndex || predicate.length >= 2,
+        skipInitial > 0,
+        'if (MAX >= 0 && emittedIndex >= MAX) { return false }'
+      )
 }
 return false
       `
-    )(this.#source, predicate, ...argValues)
+    )(this.#source, predicate, skipInitial, maxEmits ?? -1, ...argValues)
   }
 
   /**
    * Terminal: returns true if all elements satisfy the predicate.
    */
   every(predicate: (value: T, index: number) => boolean): boolean {
-    const { argNames, argValues, lines, opsNeedIndex } = buildOpsUnrolled(this.#ops)
+    const { argNames, argValues, lines, opsNeedIndex, noResults, skipInitial, maxEmits } =
+      buildOpsUnrolled(this.#ops)
+    if (noResults) {
+      return false
+    }
     const terminal = predicate.length >= 2 ? TERMINAL_EVERY : TERMINAL_EVERY_NO_INDEX
-    argNames.unshift('data', 'terminalPredicate')
+    argNames.unshift('data', 'terminalPredicate', 'SKIP', 'MAX')
     return new Function(
       ...argNames,
       `
 ${
   this.#arrayLike
-    ? emitArrayLoop(lines, terminal)
-    : emitIterableLoop(lines, terminal, opsNeedIndex || predicate.length >= 2)
+    ? emitArrayLoop(
+        lines,
+        terminal,
+        skipInitial > 0,
+        'if (MAX >= 0 && emittedIndex >= MAX) { return true }'
+      )
+    : emitIterableLoop(
+        lines,
+        terminal,
+        opsNeedIndex || predicate.length >= 2,
+        skipInitial > 0,
+        'if (MAX >= 0 && emittedIndex >= MAX) { return true }'
+      )
 }
 return true
       `
-    )(this.#source, predicate, ...argValues)
+    )(this.#source, predicate, skipInitial, maxEmits ?? -1, ...argValues)
   }
 
   /**
    * Terminal: returns the first element satisfying the predicate, or undefined.
    */
   find(predicate: (value: T, index: number) => boolean): T | undefined {
-    const { argNames, argValues, lines, opsNeedIndex } = buildOpsUnrolled(this.#ops)
+    const { argNames, argValues, lines, opsNeedIndex, noResults, skipInitial, maxEmits } =
+      buildOpsUnrolled(this.#ops)
+    if (noResults) {
+      return
+    }
     const terminal = predicate.length >= 2 ? TERMINAL_FIND : TERMINAL_FIND_NO_INDEX
-    argNames.unshift('data', 'terminalPredicate')
+    argNames.unshift('data', 'terminalPredicate', 'SKIP', 'MAX')
     return new Function(
       ...argNames,
       `
 ${
   this.#arrayLike
-    ? emitArrayLoop(lines, terminal)
-    : emitIterableLoop(lines, terminal, opsNeedIndex || predicate.length >= 2)
+    ? emitArrayLoop(
+        lines,
+        terminal,
+        skipInitial > 0,
+        'if (MAX >= 0 && emittedIndex >= MAX) { return undefined }'
+      )
+    : emitIterableLoop(
+        lines,
+        terminal,
+        opsNeedIndex || predicate.length >= 2,
+        skipInitial > 0,
+        'if (MAX >= 0 && emittedIndex >= MAX) { return undefined }'
+      )
 }
 return undefined
       `
-    )(this.#source, predicate, ...argValues)
+    )(this.#source, predicate, skipInitial, maxEmits ?? -1, ...argValues)
+  }
+
+  /**
+   * Terminal: count emitted elements efficiently with early-stop.
+   */
+  count(): number {
+    const { argNames, argValues, lines, opsNeedIndex, noResults, skipInitial, maxEmits } =
+      buildOpsUnrolled(this.#ops)
+    if (noResults) return 0
+    argNames.unshift('data', 'SKIP', 'MAX')
+    return new Function(
+      ...argNames,
+      `
+${
+  this.#arrayLike
+    ? emitArrayLoop(
+        lines,
+        TERMINAL_COUNT,
+        skipInitial > 0,
+        'if (MAX >= 0 && emittedIndex >= MAX) { return emittedIndex }'
+      )
+    : emitIterableLoop(
+        lines,
+        TERMINAL_COUNT,
+        opsNeedIndex,
+        skipInitial > 0,
+        'if (MAX >= 0 && emittedIndex >= MAX) { return emittedIndex }'
+      )
+}
+return emittedIndex
+      `
+    )(this.#source, skipInitial, maxEmits ?? -1, ...argValues) as number
   }
 
   /**
@@ -325,9 +480,4 @@ return undefined
  */
 export function stream<T>(source: Iterable<T>): Stream<T> {
   return new Stream<T>(source)
-}
-
-function escapeRegExp(s: string): string {
-  // Escape special regex characters to perform literal matches
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

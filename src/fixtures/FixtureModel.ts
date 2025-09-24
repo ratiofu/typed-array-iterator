@@ -6,3 +6,7 @@ export interface FixtureModel extends Record<string, unknown> {
   name: string
   emailAddress: string | null
 }
+
+export function byNameSorter(a: FixtureModel, b: FixtureModel) {
+  return a.name.localeCompare(b.name)
+}

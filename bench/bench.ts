@@ -3,6 +3,7 @@
 import { barplot, bench, run as mitataRun } from 'mitata'
 import type { FixtureModel } from '../src/fixtures/FixtureModel'
 import { generateFixtureData } from '../src/fixtures/generateFixtureData'
+import { tokenize } from '../src/lib/tokenize'
 import { stream } from '../src/Stream'
 
 // Test predicate: users with names longer than 10 characters
@@ -19,15 +20,15 @@ function setupBenchmarks(data: readonly FixtureModel[]) {
 
   barplot(() => {
     // Flat data scenario (no nested arrays)
-    bench('custom stream: filter->map->forEach', () => {
+    bench('custom stream: filter->transform->forEach', () => {
       nameCount = 0
       stream(data)
         .filter(longNameFilter)
-        .map((user) => user.name)
+        .transform((user) => user.name)
         .forEach(countNames)
     })
 
-    bench('arrays: filter->map->forEach', () => {
+    bench('arrays: filter->transform->forEach', () => {
       nameCount = 0
       data
         .filter(longNameFilter)
@@ -35,7 +36,7 @@ function setupBenchmarks(data: readonly FixtureModel[]) {
         .forEach(countNames)
     })
 
-    bench('manual loop: filter->map->forEach (equivalent)', () => {
+    bench('manual loop: filter->transform->forEach (equivalent)', () => {
       nameCount = 0
       for (let i = 0; i < data.length; i++) {
         const u = data[i]
@@ -75,6 +76,75 @@ function setupBenchmarks(data: readonly FixtureModel[]) {
     })
   })
 
+  // Range/index-bounded iteration comparisons
+  {
+    const start = Math.floor(data.length * 0.1)
+    const take = Math.floor(data.length * 0.2)
+    const end = Math.min(data.length, start + take)
+
+    barplot(() => {
+      bench('range: custom stream.range(start,end) -> forEach', () => {
+        nameCount = 0
+        // biome-ignore lint/complexity/noForEach: this is done here on purpose
+        stream(data)
+          .range(start, end)
+          .forEach((u) => {
+            countNames(u.name)
+          })
+      })
+
+      bench('range: arrays.slice(start,end) -> forEach', () => {
+        nameCount = 0
+        // biome-ignore lint/complexity/noForEach: comparing to stream.forEach
+        data.slice(start, end).forEach((u) => {
+          if (u) countNames(u.name)
+        })
+      })
+
+      bench('range: manual index-bounded loop', () => {
+        nameCount = 0
+        for (let i = start; i < end; i++) {
+          const u = data[i]
+          if (u) countNames(u.name)
+        }
+      })
+    })
+
+    // Materialization comparisons using slice terminal vs Array.prototype.slice
+    barplot(() => {
+      bench('slice terminal: stream.slice(start,end) -> forEach', () => {
+        nameCount = 0
+        const arr = stream(data).slice(start, end)
+        for (let i = 0; i < arr.length; i++) {
+          const u = arr[i]
+          if (u) countNames(u.name)
+        }
+      })
+
+      bench('slice terminal: arrays.slice(start,end) -> forEach', () => {
+        nameCount = 0
+        const arr = data.slice(start, end)
+        for (let i = 0; i < arr.length; i++) {
+          const u = arr[i]
+          if (u) countNames(u.name)
+        }
+      })
+
+      bench('slice terminal: manual copy -> forEach', () => {
+        nameCount = 0
+        const arr: FixtureModel[] = []
+        for (let i = start; i < end; i++) {
+          const u = data[i]
+          if (u) arr.push(u)
+        }
+        for (let i = 0; i < arr.length; i++) {
+          const u = arr[i]
+          if (u) countNames(u.name)
+        }
+      })
+    })
+  }
+
   // Text filtering comparison: stream.filterText vs arrays vs manual loop
   {
     const query = 'gmail com'
@@ -95,7 +165,7 @@ function setupBenchmarks(data: readonly FixtureModel[]) {
       bench('text filter: arrays filter->forEach (end-to-end)', () => {
         nameCount = 0
         // Rebuild tokens/regexes and predicate per-iteration to measure end-to-end cost
-        const tokens2 = query.split(/\s+/).filter((t) => t.length > 0)
+        const tokens2 = tokenize(query)
         const regexes2 = tokens2.map(
           (t) => new RegExp((t.length < 4 ? '^' : '') + escapeRegexLiteral(t), 'i')
         )

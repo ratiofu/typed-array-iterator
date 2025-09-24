@@ -4,10 +4,10 @@ import { stream } from './Stream.ts'
 describe('Stream', () => {
   type TestUser = { id: number; name: string; emailAddress: string | null }
 
-  test('map -> toArray on arrays (fast path)', () => {
+  test('transform -> toArray on arrays (fast path)', () => {
     const data = [1, 2, 3] as const
     const doubled = stream(data)
-      .map((x) => x * 2)
+      .transform((x) => x * 2)
       .toArray()
     expect(doubled).toEqual([2, 4, 6])
   })
@@ -24,14 +24,14 @@ describe('Stream', () => {
 
     const names = stream(users)
       .filter(match)
-      .map((u) => u.name)
+      .transform((u) => u.name)
       .toArray()
     expect(names).toEqual(['R\u00f6h'])
   })
 
-  test('chaining map -> filter -> reduce', () => {
+  test('chaining transform -> filter -> reduce', () => {
     const sum = stream([1, 2, 3, 4])
-      .map((x) => x * 3)
+      .transform((x) => x * 3)
       .filter((x) => x % 2 === 0)
       .reduce((acc, v) => acc + v, 0)
     // 1 * 3 = 3 (skip), 2 * 3 = 6 (take), 3 * 3 = 9 (skip), 4 * 3 = 12 (take)
@@ -84,6 +84,24 @@ describe('Stream', () => {
     })
   })
 
+  describe('filterText codegen edge cases', () => {
+    type WeirdUser = { id: number; 'first-name': string; emailAddress: string | null }
+    const users: readonly WeirdUser[] = [
+      { id: 1, 'first-name': 'Alice', emailAddress: 'alice@example.com' },
+      { id: 2, 'first-name': 'Malice', emailAddress: null },
+    ]
+
+    test('supports non-identifier field names via bracket access: starts-with (short token)', () => {
+      const out = stream(users).filterText('ali', 'first-name').toArray()
+      expect(out.map((u) => u['first-name'])).toEqual(['Alice'])
+    })
+
+    test('supports non-identifier field names via bracket access: contains (long token)', () => {
+      const out = stream(users).filterText('alic', 'first-name').toArray()
+      expect(out.map((u) => u['first-name'])).toEqual(['Alice', 'Malice'])
+    })
+  })
+
   test('generic iterable: terminals can early-exit and trigger iterator.return()', () => {
     let closed = false
     const iterable: Iterable<number> = {
@@ -132,7 +150,7 @@ describe('Stream', () => {
 
   test('toStringTag provides a concise description', () => {
     const s = stream([1, 2])
-      .map((x) => x + 1)
+      .transform((x) => x + 1)
       .filter((x) => x > 0)
     const tag = (s as unknown as { [Symbol.toStringTag]: string })[Symbol.toStringTag]
     expect(typeof tag).toBe('string')
@@ -141,10 +159,10 @@ describe('Stream', () => {
 
   test('pathological: 20 ops still compile and run', () => {
     const base = [1, 2, 3, 4, 5]
-    // Build 20 ops: alternate filter(always true) and map(+1)
+    // Build 20 ops: alternate filter(always true) and transform(+1)
     let s = stream(base as readonly number[])
     for (let i = 0; i < 10; i++) {
-      s = s.filter(() => true).map((x) => x + 1)
+      s = s.filter(() => true).transform((x) => x + 1)
     }
     const out = s.toArray()
     expect(out).toEqual([2, 3, 4, 5, 6].map((x) => x + 9))
@@ -167,7 +185,7 @@ describe('Stream', () => {
   test('forEach calls sink with emitted index after ops', () => {
     const seen: [number, number][] = []
     stream([1, 2] as const)
-      .map((x) => x * 2)
+      .transform((x) => x * 2)
       .forEach((v, i) => {
         seen.push([v, i])
       })
@@ -179,9 +197,9 @@ describe('Stream', () => {
 
   // Inlined compiler tests (moved from src/stream/codegen/*.test.ts)
   describe('Inlined compilers: toArray', () => {
-    test('arraylike path: map + filter', () => {
+    test('arraylike path: transform + filter', () => {
       const out = stream([1, 2, 3, 4] as const)
-        .map((v) => v * 2)
+        .transform((v) => v * 2)
         .filter((v) => (v & 1) === 0)
         .toArray()
       expect(out).toEqual([2, 4, 6, 8])
@@ -199,7 +217,7 @@ describe('Stream', () => {
     test('arraylike: applies ops and calls sink with emitted index', () => {
       const seen: [unknown, number][] = []
       stream([1, 2, 3] as const)
-        .map((v) => v + 1)
+        .transform((v) => v + 1)
         .filter((v) => v > 2)
         .forEach((v, i) => {
           seen.push([v, i])
@@ -214,7 +232,7 @@ describe('Stream', () => {
       const seen: unknown[] = []
       // biome-ignore lint/complexity/noForEach: this test validates Stream.forEach terminal
       stream(new Set([1, 2, 3, 4]) as Set<number>)
-        .map((v) => v * 3)
+        .transform((v) => v * 3)
         .filter((v) => v % 2 === 0)
         .forEach((v) => {
           seen.push(v)
@@ -226,21 +244,21 @@ describe('Stream', () => {
   describe('Inlined compilers: some/every/find', () => {
     test('some: arraylike true when any matches after ops', () => {
       const out = stream([1, 2, 10] as const)
-        .map((v) => v + 1)
+        .transform((v) => v + 1)
         .some((v) => v === 3)
       expect(out).toBe(true)
     })
 
     test('every: iterable false when at least one fails', () => {
       const out = stream(new Set([1, 2, 10]) as Set<number>)
-        .map((v) => v + 1)
+        .transform((v) => v + 1)
         .every((v) => v < 4)
       expect(out).toBe(false)
     })
 
     test('find: arraylike returns first matching after ops', () => {
       const out = stream([1, 2, 3] as const)
-        .map((v) => v * 2)
+        .transform((v) => v * 2)
         .find((v) => v > 2)
       expect(out).toBe(4)
     })
@@ -261,7 +279,7 @@ describe('Stream', () => {
 
     test('iterable: sum without initial value', () => {
       const sum = stream(new Set([1, 2, 3]) as Set<number>)
-        .map((v) => v * 2)
+        .transform((v) => v * 2)
         .reduce((acc, v) => acc + v)
       expect(sum).toBe(12)
     })
@@ -295,9 +313,9 @@ describe('Stream', () => {
     })
 
     describe('Arity-aware pipeline (ops)', () => {
-      test('arraylike: map/filter using index', () => {
+      test('arraylike: transform/filter using index', () => {
         const out = stream([10, 20, 30] as const)
-          .map((v, i) => v + i)
+          .transform((v, i) => v + i)
           .filter((_v, i) => (i & 1) === 0)
           .toArray()
         expect(out).toEqual([10, 32])
@@ -309,6 +327,76 @@ describe('Stream', () => {
           .toArray()
         expect(out).toEqual([2, 4])
       })
+    })
+  })
+
+  describe('Re-run terminals', () => {
+    test('reduce can be run more than once on the same stream', () => {
+      const s = stream([1, 2, 3, 4] as const)
+        .transform((x) => x + 1)
+        .filter((x) => x % 2 === 0)
+      const first = s.reduce((acc, v) => acc + v, 0)
+      const second = s.reduce((acc, v) => acc + v, 0)
+      expect(first).toBe(6)
+      expect(second).toBe(6)
+    })
+
+    test('length can be accessed multiple times and remains stable (including take/drop)', () => {
+      const s = stream([1, 2, 3, 4, 5] as const)
+        .drop(1)
+        .take(2)
+      expect(s.length).toBe(2)
+      expect(s.length).toBe(2)
+      // And reduce twice for good measure
+      expect(s.reduce((acc) => acc + 1, 0)).toBe(2)
+      expect(s.reduce((acc) => acc + 1, 0)).toBe(2)
+    })
+  })
+
+  describe('range and slice', () => {
+    test('range(start, end) limits by index lazily', () => {
+      const out = stream([1, 2, 3, 4] as const)
+        .range(1, 3)
+        .transform((x) => x * 2)
+        .toArray()
+      expect(out).toEqual([4, 6])
+    })
+
+    test('range(start) behaves like drop', () => {
+      const out = stream([1, 2, 3, 4] as const)
+        .range(2)
+        .toArray()
+      expect(out).toEqual([3, 4])
+    })
+
+    test('slice returns an array like Array.prototype.slice (positive indices)', () => {
+      const base = [1, 2, 3, 4] as const
+      const s = stream(base)
+      expect(s.slice(1, 3)).toEqual(base.slice(1, 3))
+    })
+
+    test('slice supports negative indices via fallback', () => {
+      const base = [1, 2, 3, 4]
+      const s = stream(base)
+      expect(s.slice(-2)).toEqual(base.slice(-2))
+    })
+
+    test('slice length matches expected for positive indices', () => {
+      const base = [1, 2, 3, 4] as const
+      const s = stream(base)
+      expect(s.slice(1, 3).length).toBe(base.slice(1, 3).length)
+    })
+
+    test('slice length matches when end exceeds source length', () => {
+      const base = [1, 2, 3, 4] as const
+      const s = stream(base)
+      expect(s.slice(2, 10).length).toBe(base.slice(2, 10).length)
+    })
+
+    test('slice length is zero when start beyond source length', () => {
+      const base = [1, 2, 3, 4] as const
+      const s = stream(base)
+      expect(s.slice(10, 20).length).toBe(base.slice(10, 20).length)
     })
   })
 })

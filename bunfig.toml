@@ -1,6 +1,7 @@
 [test]
 # Enable coverage by default
 coverage = true
+preload = "./happydom.ts"
 
 # Set coverage thresholds - tests will fail if coverage falls below these
 coverageThreshold = { lines = 0.95, functions = 0.95, statements = 0.95 }
@@ -19,5 +20,6 @@ coveragePathIgnorePatterns = [
   "**/*.test.ts",
   "**/*.spec.ts",
   "**/fixtures/**",
-  "**/generateFixtureData.ts"
+  "**/generateFixtureData.ts",
+  "**/testutils/**",
 ]

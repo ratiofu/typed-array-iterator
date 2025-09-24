@@ -20,7 +20,7 @@ function generateDiverseName(): string {
  * @param count Number of records to generate
  * @returns Fixture object with fields and data arrays
  */
-export function generateFixtureData(count: number): readonly FixtureModel[] {
+export function generateFixtureData(count: number): FixtureModel[] {
   if (Number.isNaN(count) || count <= 0) {
     throw new Error('Count must be a positive integer')
   }

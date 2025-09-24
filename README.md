@@ -12,7 +12,7 @@ import { stream } from './src/Stream'
 // Build a pipeline, then execute with a terminal (toArray/reduce/...)
 const result = stream([1, 2, 3, 4])
   .filter((x) => x % 2 === 0)
-  .map((x) => x * 10)
+  .transform((x) => x * 10)
   .toArray()
 // -> [20, 40]
 
@@ -28,7 +28,7 @@ const flat = stream([[1, 2], [3]]).flat().toArray() // [1, 2, 3]
 // React usage (index fallback for key)
 // const items = stream(users)
 //   .filter(u => u.active)
-//   .map((u, i) => <li key={u.id ?? i}>{u.name}</li>)
+//   .transform((u, i) => <li key={u.id ?? i}>{u.name}</li>)
 ```
 
 ### Design notes
@@ -38,6 +38,17 @@ const flat = stream([[1, 2], [3]]).flat().toArray() // [1, 2, 3]
   - Packed array representation: complicated memory/GC behavior and didn’t compose cleanly with flatten; harder to reason about indices and early exits.
   - Iterator-per-op pipeline: flexible but slower for arrays; more allocations and indirection along hot paths, and unnecessary for the primary array→array use case.
 - Result: keep a simple pipeline builder API with terminal-only execution, optimized for arrays, with graceful fallback for generic iterables at flatten barriers.
+
+## Current Limitation: range(start > 0) with filters
+
+- Temporary: Using a starting range/drop (e.g., `range(start, end)` with `start > 0`, or `drop(n)`) together with any `filter` in the pipeline will throw at compile-time.
+- Why: The current implementation applies the initial skip at the source-level before filters, which does not match the desired post-filter semantics when filters are present.
+- Workarounds:
+  - Use `take(n)` or `range(0, n)` alongside filters (these are enforced post-filter and work correctly), or
+  - Materialize with `slice()` first, then filter (trades memory for correctness), or
+  - Move `drop`/`range(start > 0)` to pipelines that do not contain filters.
+- Status: See `multi-range-support.md` for the plan to support multiple ranges with correct post-filter semantics efficiently.
+
 ## Terminals (succinct)
 
 - toArray(): materializes to an array

@@ -11,16 +11,26 @@
     "quality:all": "time (bun quality && bun generate-fixtures 1 && bun src/index.ts)",
     "bench": "bun --expose-gc bench/bench.ts 100000",
     "bench:large": "bun --expose-gc bench/bench.ts 500000",
-    "bench:deep": "./bench/compare-bun-node-perf.sh"
+    "bench:deep": "./bench/compare-bun-node-perf.sh",
+    "dev": "bun --hot src/demo/index.ts",
+    "build": "bun build ./src/demo/index.html --outdir=src/demo/dist --sourcemap --target=browser --minify --define:process.env.NODE_ENV='\"production\"' --env='BUN_PUBLIC_*'",
+    "start": "NODE_ENV=production bun src/demo/index.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.4",
-    "@mitata/counters": "^0.0.8",
+    "@happy-dom/global-registrator": "18.0.1",
+    "@mitata/counters": "0.0.8",
     "@ngneat/falso": "8.0.2",
     "@types/bun": "latest",
+    "@types/react": "19.1.13",
+    "@types/react-dom": "19.1.9",
     "mitata": "1.0.34"
   },
   "peerDependencies": {
     "typescript": "5.9.2"
+  },
+  "dependencies": {
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
   }
 }
