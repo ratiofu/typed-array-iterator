@@ -25,6 +25,7 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noPropertyAccessFromIndexSignature": true,
+    "noImplicitAny": true,
 
     // Other strictness
     "noEmitOnError": true,
