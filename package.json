@@ -7,7 +7,7 @@
     "generate-fixtures": "bun run src/fixtures/generateFixtureData.ts",
     "check": "biome check --write .",
     "typecheck": "tsc --noEmit",
-    "quality": "bun typecheck && bun check && bun run test",
+    "quality": "(time (bun typecheck && echo 'tsc done')) & (bun check && bun test) && wait",
     "quality:all": "time (bun quality && bun generate-fixtures 1 && bun src/index.ts)",
     "bench": "bun --expose-gc bench/bench.ts 100000",
     "bench:large": "bun --expose-gc bench/bench.ts 500000",
