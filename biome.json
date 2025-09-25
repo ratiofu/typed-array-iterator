@@ -96,7 +96,7 @@
         "noNegationElse": "error",
         "noNonNullAssertion": "error",
         "noParameterAssign": "error",
-        "noParameterProperties": "error",
+        "noParameterProperties": "off",
         "noRestrictedGlobals": "error",
         "noShoutyConstants": "error",
         "noUnusedTemplateLiteral": "error",

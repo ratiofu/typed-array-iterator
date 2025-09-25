@@ -2,47 +2,23 @@ import { buildRegExps } from './lib/buildRegExps'
 import { emptyArray } from './lib/emptyArray'
 import { notSpecificEnough } from './lib/notSpecificEnough'
 import { tokenize } from './lib/tokenize'
-import { buildOpsUnrolled, emitArrayLoop, emitIterableLoop, hasNoMatchOps } from './stream/compiler'
-import { isArrayLike } from './stream/isArrayLike'
+import { hasNoMatchOps } from './stream/compiler'
+import { DebugStream } from './stream/DebugStream'
+import { FILTER_TEXT_HINTS, type FilterTextHints } from './stream/FilterTextHints'
 import { noMatch } from './stream/noMatch'
-import type { FieldsParam, FilterFn, FilterOp, MapFn, MapOp, Op } from './stream/types'
+import { StreamCompiler } from './stream/StreamCompiler'
+import type {
+  CompiledResult,
+  FieldsParam,
+  FilterFn,
+  FilterOp,
+  MapFn,
+  MapOp,
+  Op,
+} from './stream/types'
 
 // Private: valid JS identifier for dot-notation property access
 const IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/
-
-// Terminal snippets, with index call supported for operations
-const TERMINAL_TO_ARRAY = '  result[emittedIndex++] = currentValue'
-const TERMINAL_FOR_EACH = '  sink(currentValue, emittedIndex++)'
-const TERMINAL_SOME = '  if (terminalPredicate(currentValue, emittedIndex++)) { return true }'
-const TERMINAL_EVERY = '  if (!terminalPredicate(currentValue, emittedIndex++)) { return false }'
-const TERMINAL_FIND =
-  '  if (terminalPredicate(currentValue, emittedIndex++)) { return currentValue }'
-const TERMINAL_REDUCE = `
-  if (started) {
-    accumulator = reducer(accumulator, currentValue, emittedIndex++)
-  } else {
-    accumulator = currentValue
-    started = true
-    emittedIndex++
-  }
-`
-const TERMINAL_COUNT = '  emittedIndex++'
-
-// Terminal snippets, without index support
-const TERMINAL_FOR_EACH_NO_INDEX = 'sink(currentValue)'
-const TERMINAL_SOME_NO_INDEX = 'if (terminalPredicate(currentValue)) { return true }'
-const TERMINAL_EVERY_NO_INDEX = 'if (!terminalPredicate(currentValue)) { return false }'
-const TERMINAL_FIND_NO_INDEX = 'if (terminalPredicate(currentValue)) { return currentValue }'
-const TERMINAL_REDUCE_NO_INDEX = `
-if (started) {
-  accumulator = reducer(accumulator, currentValue)
-  emittedIndex++
-} else {
-  accumulator = currentValue
-  started = true
-  emittedIndex++
-}
-`
 
 /**
  * Lazy, compiled pipeline builder for iterables. Achieves similar performance as
@@ -57,20 +33,9 @@ export class Stream<T> {
   readonly #source: Iterable<T> | ArrayLike<T>
   readonly #ops: readonly Op[]
 
-  #isArrayLike: boolean | null = null
-
   constructor(source: Iterable<T> | ArrayLike<T>, ops?: readonly Op[]) {
     this.#source = source
     this.#ops = ops ?? emptyArray<Op>()
-  }
-
-  get #arrayLike() {
-    let arrayLike = this.#isArrayLike
-    if (arrayLike === null) {
-      arrayLike = isArrayLike(this.#source)
-      this.#isArrayLike = arrayLike
-    }
-    return arrayLike
   }
 
   get length(): number {
@@ -187,9 +152,16 @@ export class Stream<T> {
       lines.push('return true')
     }
     const source = lines.join('\n')
-    // console.log(source)
     const compiled = new Function('value', 'rs', source)
-    return this.filter((value) => compiled(value, regexes))
+
+    // Wrap predicate; attach minimal, non-enumerable hints for optional debug rendering
+    const filterFn: FilterFn = ((value: unknown) => compiled(value as never, regexes)) as FilterFn
+    Object.defineProperty(filterFn, FILTER_TEXT_HINTS, {
+      value: { query, tokens, regexes, fields: fields.map((f) => String(f)) } as FilterTextHints,
+      enumerable: false,
+    })
+
+    return this.filter(filterFn)
   }
 
   /**
@@ -206,48 +178,9 @@ export class Stream<T> {
    * Compiles and runs a specialized toArray for this stream.
    */
   toArray(): T[] {
-    const {
-      argNames,
-      argValues,
-      lines,
-      opsNeedIndex,
-      hasFilter,
-      noResults,
-      skipInitial,
-      maxEmits,
-    } = buildOpsUnrolled(this.#ops)
-    if (noResults) {
-      return []
-    }
-    argNames.unshift('data', 'SKIP', 'MAX')
-    return new Function(
-      ...argNames,
-      `
-${
-  this.#arrayLike
-    ? `const result = new Array((MAX >= 0 ? Math.max(0, Math.min(MAX, (data.length - SKIP) >>> 0)) : ${hasFilter ? '(data.length >>> 1)' : 'data.length'}))`
-    : 'const result = []'
-}
-${
-  this.#arrayLike
-    ? emitArrayLoop(
-        lines,
-        TERMINAL_TO_ARRAY,
-        skipInitial > 0,
-        'if (MAX >= 0 && emittedIndex >= MAX) { break }'
-      )
-    : emitIterableLoop(
-        lines,
-        TERMINAL_TO_ARRAY,
-        opsNeedIndex,
-        skipInitial > 0,
-        'if (MAX >= 0 && emittedIndex >= MAX) { break }'
-      )
-}
-result.length = emittedIndex
-return result
-      `
-    )(this.#source, skipInitial, maxEmits ?? -1, ...argValues)
+    const compiled = new StreamCompiler<T>(this.#source, this.#ops).compileToArray()
+    if (compiled.noResults) return []
+    return execute(compiled)
   }
 
   /**
@@ -255,30 +188,9 @@ return result
    * Executes a compiled forEach with the provided sink.
    */
   forEach(fn: (value: T, index: number) => void): void {
-    const { argNames, argValues, lines, opsNeedIndex, noResults, skipInitial, maxEmits } =
-      buildOpsUnrolled(this.#ops)
-    if (noResults) {
-      return
-    }
-    const terminal = fn.length >= 2 ? TERMINAL_FOR_EACH : TERMINAL_FOR_EACH_NO_INDEX
-    argNames.unshift('data', 'sink', 'SKIP', 'MAX')
-    new Function(
-      ...argNames,
-      this.#arrayLike
-        ? emitArrayLoop(
-            lines,
-            terminal,
-            skipInitial > 0,
-            'if (MAX >= 0 && emittedIndex >= MAX) { return }'
-          )
-        : emitIterableLoop(
-            lines,
-            terminal,
-            opsNeedIndex || fn.length >= 2,
-            skipInitial > 0,
-            'if (MAX >= 0 && emittedIndex >= MAX) { return }'
-          )
-    )(this.#source, fn, skipInitial, maxEmits ?? -1, ...argValues)
+    const compiled = new StreamCompiler<T>(this.#source, this.#ops).compileForEach(fn)
+    if (compiled.noResults) return
+    execute(compiled)
   }
 
   /**
@@ -286,193 +198,69 @@ return result
    * If `initialValue` is omitted, the first emitted element is used as the seed.
    */
   reduce<U = T>(reducer: (previous: U, current: T, index: number) => U, initialValue?: U): U {
-    const { argNames, argValues, lines, opsNeedIndex, noResults, skipInitial, maxEmits } =
-      buildOpsUnrolled(this.#ops)
-    if (noResults) {
+    const compiled = new StreamCompiler<T>(this.#source, this.#ops).compileReduce(
+      reducer as unknown as (p: unknown, c: T, i: number) => unknown,
+      initialValue
+    )
+    if (compiled.noResults) {
       throw new TypeError('Reduce of empty stream with no initial value')
     }
-    const terminal = reducer.length >= 3 ? TERMINAL_REDUCE : TERMINAL_REDUCE_NO_INDEX
-    argNames.unshift('data', 'reducer', 'hasInitial', 'initialValue', 'SKIP', 'MAX')
-    return new Function(
-      ...argNames,
-      `
-let started = hasInitial
-let accumulator = initialValue
-${
-  this.#arrayLike
-    ? emitArrayLoop(
-        lines,
-        terminal,
-        skipInitial > 0,
-        'if (MAX >= 0 && emittedIndex >= MAX) { if (!started) { throw new TypeError("Reduce of empty stream with no initial value") } return accumulator }'
-      )
-    : emitIterableLoop(
-        lines,
-        terminal,
-        opsNeedIndex || reducer.length >= 3,
-        skipInitial > 0,
-        'if (MAX >= 0 && emittedIndex >= MAX) { if (!started) { throw new TypeError("Reduce of empty stream with no initial value") } return accumulator }'
-      )
-}
-if (!started) { throw new TypeError("Reduce of empty stream with no initial value") }
-return accumulator
-`
-    )(
-      this.#source,
-      reducer,
-      initialValue !== undefined,
-      initialValue,
-      skipInitial,
-      maxEmits ?? -1,
-      ...argValues
-    ) as U
+    return execute(compiled)
   }
 
   /**
    * Terminal: returns true if any element satisfies the predicate.
    */
   some(predicate: (value: T, index: number) => boolean): boolean {
-    const { argNames, argValues, lines, opsNeedIndex, noResults, skipInitial, maxEmits } =
-      buildOpsUnrolled(this.#ops)
-    if (noResults) {
-      return false
-    }
-    const terminal = predicate.length >= 2 ? TERMINAL_SOME : TERMINAL_SOME_NO_INDEX
-    argNames.unshift('data', 'terminalPredicate', 'SKIP', 'MAX')
-    return new Function(
-      ...argNames,
-      `
-${
-  this.#arrayLike
-    ? emitArrayLoop(
-        lines,
-        terminal,
-        skipInitial > 0,
-        'if (MAX >= 0 && emittedIndex >= MAX) { return false }'
-      )
-    : emitIterableLoop(
-        lines,
-        terminal,
-        opsNeedIndex || predicate.length >= 2,
-        skipInitial > 0,
-        'if (MAX >= 0 && emittedIndex >= MAX) { return false }'
-      )
-}
-return false
-      `
-    )(this.#source, predicate, skipInitial, maxEmits ?? -1, ...argValues)
+    const compiled = new StreamCompiler<T>(this.#source, this.#ops).compileSome(predicate)
+    if (compiled.noResults) return false
+    return execute(compiled)
   }
 
   /**
    * Terminal: returns true if all elements satisfy the predicate.
    */
   every(predicate: (value: T, index: number) => boolean): boolean {
-    const { argNames, argValues, lines, opsNeedIndex, noResults, skipInitial, maxEmits } =
-      buildOpsUnrolled(this.#ops)
-    if (noResults) {
-      return false
-    }
-    const terminal = predicate.length >= 2 ? TERMINAL_EVERY : TERMINAL_EVERY_NO_INDEX
-    argNames.unshift('data', 'terminalPredicate', 'SKIP', 'MAX')
-    return new Function(
-      ...argNames,
-      `
-${
-  this.#arrayLike
-    ? emitArrayLoop(
-        lines,
-        terminal,
-        skipInitial > 0,
-        'if (MAX >= 0 && emittedIndex >= MAX) { return true }'
-      )
-    : emitIterableLoop(
-        lines,
-        terminal,
-        opsNeedIndex || predicate.length >= 2,
-        skipInitial > 0,
-        'if (MAX >= 0 && emittedIndex >= MAX) { return true }'
-      )
-}
-return true
-      `
-    )(this.#source, predicate, skipInitial, maxEmits ?? -1, ...argValues)
+    const compiled = new StreamCompiler<T>(this.#source, this.#ops).compileEvery(predicate)
+    if (compiled.noResults) return false
+    return execute(compiled)
   }
 
   /**
    * Terminal: returns the first element satisfying the predicate, or undefined.
    */
   find(predicate: (value: T, index: number) => boolean): T | undefined {
-    const { argNames, argValues, lines, opsNeedIndex, noResults, skipInitial, maxEmits } =
-      buildOpsUnrolled(this.#ops)
-    if (noResults) {
-      return
-    }
-    const terminal = predicate.length >= 2 ? TERMINAL_FIND : TERMINAL_FIND_NO_INDEX
-    argNames.unshift('data', 'terminalPredicate', 'SKIP', 'MAX')
-    return new Function(
-      ...argNames,
-      `
-${
-  this.#arrayLike
-    ? emitArrayLoop(
-        lines,
-        terminal,
-        skipInitial > 0,
-        'if (MAX >= 0 && emittedIndex >= MAX) { return undefined }'
-      )
-    : emitIterableLoop(
-        lines,
-        terminal,
-        opsNeedIndex || predicate.length >= 2,
-        skipInitial > 0,
-        'if (MAX >= 0 && emittedIndex >= MAX) { return undefined }'
-      )
-}
-return undefined
-      `
-    )(this.#source, predicate, skipInitial, maxEmits ?? -1, ...argValues)
+    const compiled = new StreamCompiler<T>(this.#source, this.#ops).compileFind(predicate)
+    if (compiled.noResults) return undefined
+    return execute(compiled)
   }
 
   /**
    * Terminal: count emitted elements efficiently with early-stop.
    */
   count(): number {
-    const { argNames, argValues, lines, opsNeedIndex, noResults, skipInitial, maxEmits } =
-      buildOpsUnrolled(this.#ops)
-    if (noResults) return 0
-    argNames.unshift('data', 'SKIP', 'MAX')
-    return new Function(
-      ...argNames,
-      `
-${
-  this.#arrayLike
-    ? emitArrayLoop(
-        lines,
-        TERMINAL_COUNT,
-        skipInitial > 0,
-        'if (MAX >= 0 && emittedIndex >= MAX) { return emittedIndex }'
-      )
-    : emitIterableLoop(
-        lines,
-        TERMINAL_COUNT,
-        opsNeedIndex,
-        skipInitial > 0,
-        'if (MAX >= 0 && emittedIndex >= MAX) { return emittedIndex }'
-      )
-}
-return emittedIndex
-      `
-    )(this.#source, skipInitial, maxEmits ?? -1, ...argValues) as number
+    const compiled = new StreamCompiler<T>(this.#source, this.#ops).compileCount()
+    if (compiled.noResults) return 0
+    return execute(compiled)
   }
 
   /**
    * Debug/diagnostic label describing the source kind and ops chain.
    */
-  get [Symbol.toStringTag](): string {
-    return `Stream(${
-      this.#source?.constructor?.name ?? this.#source?.toString() ?? 'unknown'
-    }, ${this.#ops.map((op) => op.kind).join('->')})`
+  toString(): string {
+    const sourceType = this.#source?.constructor?.name ?? this.#source?.toString() ?? 'unknown'
+    const ops = this.#ops.map((op) => op.kind).join('->')
+    return `Stream(${sourceType}, ${ops})`
   }
+
+  /** Return a debug view of this Stream. */
+  debug(): DebugStream<T> {
+    return new DebugStream<T>(this.#source, this.#ops, this.toString())
+  }
+}
+
+function execute<R>(compiled: CompiledResult): R {
+  return new Function(...compiled.argNames, compiled.body)(...compiled.values) as R
 }
 
 /**

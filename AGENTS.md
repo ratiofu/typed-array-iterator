@@ -4,6 +4,12 @@ globs: "*.ts, *.tsx, *.html, *.css, *.js, *.jsx, package.json"
 alwaysApply: false
 ---
 
+## Coding Style Guidelines
+
+Use concise but descriptive names everywhere, in camelCase. Generally, do not abbreviate.
+
+## Bun instead of Node
+
 Default to using Bun instead of Node.js.
 
 - Use `bun <file>` instead of `node <file>` or `ts-node <file>`

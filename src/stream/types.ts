@@ -18,6 +18,19 @@ export type BuiltOps = {
   readonly maxEmits: number | null
 }
 
+export type CompiledResult = {
+  argNames: string[]
+  body: string
+  values: unknown[]
+  noResults: boolean
+  arrayLike: boolean
+  skipInitial: number
+  maxEmits: number | null
+  opArgNames?: readonly string[]
+  opArgValues?: readonly unknown[]
+  opDebug?: Array<{ op: string; info: unknown }>
+}
+
 // Exclude index signatures from keyof T so we only consider known, declared property keys
 export type KnownKeys<T> = {
   [K in keyof T]: string extends K ? never : number extends K ? never : symbol extends K ? never : K

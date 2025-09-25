@@ -1,6 +1,7 @@
 - [x] 0. Refactor `useSearch` so that the stream work is complete before the item is rendered  
-- [ ] 1. Provide a "debug" option for any of the terminals to emit the resulting source code 
-- [ ] 2. Remove count/length and provide an `estimateSize` option that samples the source if filters exist 
-- [ ] 3. Revisit the benchmark implementation to be more real-world focused and investigate performance regressions
-- [ ] 4. Add more comprehensive unit tests for complex combinations of ops
-- [ ] 5. Address [multi-range-support](./multi-range-support.md)
+- [x] 1. Provide a "debug" option for any of the terminals to emit the resulting source code 
+- [ ] 2. Remove all iterable support from the Stream and compiler; no need to branch or check in code: assume arraylike and enforce via types 
+- [ ] 3. Remove count/length and provide an `estimateSize` option that samples the source if filters exist 
+- [ ] 4. Revisit the benchmark implementation to be more real-world focused and investigate performance regressions
+- [ ] 5. Add more comprehensive unit tests for complex combinations of ops
+- [ ] 6. Address [multi-range-support](./multi-range-support.md)

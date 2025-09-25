@@ -148,11 +148,11 @@ describe('Stream', () => {
     expect(seen).toEqual([1, 2, 3])
   })
 
-  test('toStringTag provides a concise description', () => {
+  test('toString provides a concise description', () => {
     const s = stream([1, 2])
       .transform((x) => x + 1)
       .filter((x) => x > 0)
-    const tag = (s as unknown as { [Symbol.toStringTag]: string })[Symbol.toStringTag]
+    const tag = s.toString()
     expect(typeof tag).toBe('string')
     expect(tag).toContain('Stream(')
   })

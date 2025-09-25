@@ -22,4 +22,6 @@ coveragePathIgnorePatterns = [
   "**/fixtures/**",
   "**/generateFixtureData.ts",
   "**/testutils/**",
+  "src/demo/App.tsx",
+  "src/demo/frontend.tsx",
 ]
